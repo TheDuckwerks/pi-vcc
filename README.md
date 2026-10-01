@@ -2,8 +2,8 @@
 
 Internal-use fork of [sting8k/pi-vcc](https://github.com/sting8k/pi-vcc), based on
 upstream `303e89db` (0.8.0). The npm badge and npm install instructions below refer
-to **upstream**, not this fork. This fork has not been published to npm or switched
-into the daily Duckwerks Pi installation.
+to **upstream**, not this fork. This fork has not been published to npm. Install
+a reviewed Git revision to try the fork; do not load it alongside upstream.
 
 ## Additive recognition sidecar
 
@@ -62,13 +62,14 @@ capture, fallback, identity pairing, conservative shell matching, chronological
 caps and repeated-merge dedup. `tests/profile-hook.test.ts` exercises the actual
 compaction hook with a fixed cut and session-global index map.
 
-Keep test temp files and synthetic HOME separate from live runtime state when
-running the suite. For the Duckwerks checkout, ignored `node_modules/.tmp` and
+Keep test temp files, synthetic HOME, and the selected Pi agent directory
+separate from live runtime state when running the suite. For the Duckwerks checkout, ignored `node_modules/.tmp` and
 `node_modules/.test-home` serve this purpose:
 
 ```bash
 mkdir -p node_modules/.tmp node_modules/.test-home
-HOME="$PWD/node_modules/.test-home" TMPDIR="$PWD/node_modules/.tmp" bun test
+HOME="$PWD/node_modules/.test-home" TMPDIR="$PWD/node_modules/.tmp" \
+  PI_CODING_AGENT_DIR="$PWD/node_modules/.test-home/.pi/agent" bun test
 ```
 
 For a tiny live smoke session, set **Pi core's** `compaction.keepRecentTokens` to
@@ -80,8 +81,8 @@ preparation. Do not lower daily retention just to run this test.
 
 The two upstream private-session tests skip in that isolated HOME. The existing
 Bash/debug snapshot location can be overridden with `PI_VCC_DEBUG_PATH`, allowing
-hook tests to keep snapshots in their own temp directory rather than sharing
-`/tmp/pi-vcc-debug.json`. `PI_VCC_CONFIG_PATH` selects an explicit config file for
+hook tests to keep snapshots in their own temp directory rather than writing to
+the normal Pi runtime. `PI_VCC_CONFIG_PATH` selects an explicit config file for
 an operator-approved trial. Neither override installs this fork. Do not load it
 alongside the upstream compactor in the same Pi invocation.
 
@@ -239,7 +240,18 @@ Manual slash command:
 
 ## Config
 
-Config lives at `~/.pi/agent/pi-vcc-config.json` (auto-scaffolded on first load with safe defaults):
+Config lives at `pi-vcc-config.json` inside Pi's selected agent directory,
+resolved through the host's `getAgentDir()`. It honors `PI_CODING_AGENT_DIR`;
+without that override Pi defaults to `~/.pi/agent`. The file is auto-scaffolded
+on first load with safe defaults. `PI_VCC_CONFIG_PATH` explicitly overrides this
+location for isolated trials. Existing files in a former agent directory are
+not silently migrated or deleted; move approved settings before switching.
+
+Debug snapshots also default to the selected agent directory, at
+`pi-vcc-debug.json`, with `PI_VCC_DEBUG_PATH` available as an explicit override.
+Debug remains off unless enabled.
+
+Defaults:
 
 ```json
 {
@@ -255,7 +267,7 @@ Config lives at `~/.pi/agent/pi-vcc-config.json` (auto-scaffolded on first load 
 - **`overrideDefaultCompaction`** *(default `true`)*: when `true`, pi-vcc handles all compaction paths — `/pi-vcc`, `/compact`, and auto-threshold/overflow. Set `false` to restrict pi-vcc to `/pi-vcc` and let the rest fall through to pi core. Existing config files keep whatever value they already have.
 - **`smartKeepTail`** *(default `true`)*: when `true`, pi-vcc boosts the default `keep:1` to the largest `N` whose tail stays ≤ 25k tokens, but only when the `keep:1` tail is already small (≤ 5k tokens). Explicit `keep:N` from the user is always respected.
 - **`continueAfterThresholdCompact`** *(default `true`)*: permission for pi-vcc to ask the agent to continue after a successful automatic compaction (threshold or overflow), avoiding a UX cliff where the agent stops after compaction instead of continuing the task. It only applies to pi < 0.84.4 - from 0.84.4 on, pi core resumes the run itself, so pi-vcc never sends its own continue (a second one would land as a ghost turn). `false` disables it on every version.
-- **`debug`** *(default `false`)*: when `true`, each compaction writes detailed info to `/tmp/pi-vcc-debug.json` — message counts, cut boundary, summary preview, sections, token estimate calibration.
+- **`debug`** *(default `false`)*: when `true`, each compaction writes detailed info to `pi-vcc-debug.json` in Pi's selected agent directory — message counts, cut boundary, summary preview, sections, token estimate calibration.
 - **`skipForProviders`** *(default `[]`)*: providers pi-vcc defers compaction for, so a provider-specific compaction extension (e.g. remote compaction for OpenAI/Grok models) can take over instead. Matched exactly and case-insensitively against Pi's provider id — check `/model` for the actual id (Grok is `xai`, not `grok`). The check runs per compaction, so switching models mid-session works. Explicit `/pi-vcc` always bypasses the skip.
 - **`skipCustomTypes`** *(default `[]`)*: list of `customType` values whose `custom_message` entries are excluded from the summarizer input. Some extensions inject per-turn boilerplate via `custom_message` (e.g. skill cards, guidance blocks) that gets regenerated every turn — summarizing it wastes tokens and pollutes the summary. Match is exact and case-sensitive on `customType`; find an extension's value in your session file (`"type":"custom_message"` entries). Only the summary input is filtered: cut selection, token calibration, and kept-tail counting are unaffected. Extensions that inject ephemeral per-turn content should carry a stable `customType` so compactors can exclude them.
 

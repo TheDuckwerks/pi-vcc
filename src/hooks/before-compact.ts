@@ -4,7 +4,7 @@ import { writeFileSync } from "fs";
 import { compileRanked } from "../core/summarize";
 import { buildGlobalIndexById, loadGlobalIndexById } from "../core/global-indices";
 import { parseKeepAndPrompt, PI_VCC_COMPACT_INSTRUCTION } from "../core/compact-args";
-import { loadSettings, type PiVccSettings } from "../core/settings";
+import { debugPath, loadSettings, type PiVccSettings } from "../core/settings";
 import { loadRecognitionProfile } from "../core/recognition-profile";
 import { calibrateCharsPerToken, estimateMessageContentChars, estimateMessageContentTokens, estimateTokensFromChars } from "../core/token-estimate";
 import type { PiVccCompactionDetails } from "../details";
@@ -199,7 +199,7 @@ const normalizeKeepUserTurns = (keepUserTurns: number): number => {
 
 const dbg = (settings: PiVccSettings, data: Record<string, unknown>) => {
   if (!settings.debug) return;
-  try { writeFileSync(process.env.PI_VCC_DEBUG_PATH ?? "/tmp/pi-vcc-debug.json", JSON.stringify(data, null, 2)); } catch {}
+  try { writeFileSync(debugPath(), JSON.stringify(data, null, 2)); } catch {}
 };
 
 const previewContent = (content: unknown): string => {

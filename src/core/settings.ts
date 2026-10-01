@@ -1,10 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { homedir } from "os";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "path";
 
-export const SETTINGS_PATH_DEFAULT = join(homedir(), ".pi", "agent", "pi-vcc-config.json");
-const settingsPath = (): string => process.env.PI_VCC_CONFIG_PATH ?? SETTINGS_PATH_DEFAULT;
-/** Backwards-compat export. Resolves at access time, not import time. */
+const defaultSettingsPath = (): string => join(getAgentDir(), "pi-vcc-config.json");
+export const SETTINGS_PATH_DEFAULT = defaultSettingsPath();
+const settingsPath = (): string => process.env.PI_VCC_CONFIG_PATH ?? defaultSettingsPath();
+export const debugPath = (): string => process.env.PI_VCC_DEBUG_PATH ?? join(getAgentDir(), "pi-vcc-debug.json");
+/** Backwards-compat snapshot export; actual I/O resolves the current path. */
 export const SETTINGS_PATH = settingsPath();
 
 export interface PiVccSettings {
@@ -41,7 +43,7 @@ export interface PiVccSettings {
    * Overflow retry is still owned by pi-core via willRetry.
    */
   continueAfterThresholdCompact: boolean;
-  /** Write debug snapshot to /tmp/pi-vcc-debug.json on each compaction. */
+  /** Write the debug snapshot in Pi's agent directory, unless explicitly overridden. */
   debug: boolean;
   /**
    * Providers for which pi-vcc defers compaction entirely (issue #27), e.g.
@@ -99,7 +101,7 @@ export function loadSettings(): PiVccSettings {
 }
 
 /**
- * Ensure ~/.pi/agent/pi-vcc-config.json exists with default keys.
+ * Ensure the selected Pi agent directory's pi-vcc-config.json exists with default keys.
  * - File missing → create with full default block.
  * - File exists but invalid JSON → no-op (don't clobber user file).
  * - File exists and valid → fill in missing default keys, preserve existing values.
