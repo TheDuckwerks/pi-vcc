@@ -86,6 +86,10 @@ the normal Pi runtime. `PI_VCC_CONFIG_PATH` selects an explicit config file for
 an operator-approved trial. Neither override installs this fork. Do not load it
 alongside the upstream compactor in the same Pi invocation.
 
+Fresh goal extraction ignores complete observed `background_bash` completion
+notices, including their command/output text. They remain transcript and recall
+evidence. This does not retroactively scrub goal bullets from older summaries.
+
 Further cleanup and any LLM continuity note remain separate from this POC.
 
 ---

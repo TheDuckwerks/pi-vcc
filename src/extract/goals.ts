@@ -31,6 +31,14 @@ const stripLeadingBullet = (line: string): string =>
 
 const MAX_GOAL_CHARS = 200;
 
+// background_bash wakes arrive as user messages. Match their observed envelope,
+// not ordinary requests about jobs; commands/output are evidence, not intent.
+// Only goal extraction skips them: transcript, recall and indexing stay intact.
+const isBackgroundJobNotice = (text: string): boolean =>
+  /^Background job [a-f0-9]{12} exited with code -?\d+ after \d+(?:\.\d+)?s\.\r?\n/.test(text) &&
+  /^Output tail:\r?$/m.test(text) &&
+  /(?:^|\n)Full output: [^\r\n]+(?:\r?\n)?$/.test(text);
+
 const isSubstantiveGoal = (text: string): boolean => {
   const t = text.trim();
   if (t.length <= 5) return false;
@@ -49,7 +57,7 @@ export const extractGoals = (blocks: NormalizedBlock[]): string[] => {
   let latestScopeChange: string[] | null = null;
 
   for (const b of blocks) {
-    if (b.kind !== "user") continue;
+    if (b.kind !== "user" || isBackgroundJobNotice(b.text)) continue;
     const rawLines = nonEmptyLines(b.text);
     const truncated = truncateAtTemplate(rawLines);
     const lines = collapseSkillLines(truncated.filter(isSubstantiveGoal))
