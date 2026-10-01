@@ -20,7 +20,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const run = (profilePath?: string, previousSummary?: string) => {
+const run = (profilePath?: string, previousSummary?: string, prepare?: (entries: any[]) => any) => {
   writeFileSync(process.env.PI_VCC_CONFIG_PATH!, JSON.stringify({
     debug: false, smartKeepTail: false, overrideDefaultCompaction: true,
     ...(profilePath ? { recognitionProfilePath: profilePath } : {}),
@@ -31,7 +31,7 @@ const run = (profilePath?: string, previousSummary?: string) => {
     { type: "message", id: "a1", message: { role: "assistant", content: [{ type: "text", text: "Commits recorded." }], timestamp: 0 } },
     { type: "message", id: "u2", message: { role: "user", content: "Review the result", timestamp: 0 } },
     { type: "message", id: "a2", message: { role: "assistant", content: [{ type: "text", text: "Reviewing." }], timestamp: 0 } },
-  ];
+  ].map((entry, i, all) => ({ ...entry, parentId: all[i - 1]?.id ?? null }));
   // Abandoned entries count globally but are not in the summarized lineage.
   const all = [
     ...Array.from({ length: 122 }, (_, i) => ({ type: "message", id: `abandoned${i}`, message: { role: "user", content: "Other branch" } })),
@@ -43,7 +43,7 @@ const run = (profilePath?: string, previousSummary?: string) => {
   const ctx = { ui: { notify: (message: string) => notifications.push(message) }, sessionManager: { getEntries: () => all } };
   const response = handler({
     branchEntries: entries, customInstructions: `${PI_VCC_COMPACT_INSTRUCTION} keep:1`, reason: "manual",
-    preparation: { previousSummary, fileOps: { read: [], written: [], edited: [] }, tokensBefore: 2000 },
+    preparation: prepare?.(entries) ?? { previousSummary, fileOps: { read: [], written: [], edited: [] }, tokensBefore: 2000 },
   }, ctx);
   return { response, notifications };
 };
@@ -80,6 +80,22 @@ describe("profile reaches the real compaction hook", () => {
     expect(summary).toContain("Make the approved changes (#122)");
     expect(summary.split("\n\n---\n\n")[1]).toBe(off.response.compaction.summary.split("\n\n---\n\n")[1]);
     expect(on.notifications).toEqual([]);
+  });
+
+  test("short smoke reaches the hook only after Pi core retention is lowered", async () => {
+    // Exercise the installed host's preparation boundary, not just a fabricated
+    // hook event. This private module is test-only, never a runtime dependency.
+    const host = await import(new URL("./core/compaction/compaction.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
+    const path = join(dir, "profile.json");
+    writeFileSync(path, JSON.stringify(profileJson));
+    const { response } = run(path, undefined, entries => {
+      expect(host.prepareCompaction(entries, host.DEFAULT_COMPACTION_SETTINGS)).toBeUndefined();
+      const preparation = host.prepareCompaction(entries, { ...host.DEFAULT_COMPACTION_SETTINGS, keepRecentTokens: 0 });
+      expect(preparation).toBeDefined();
+      return preparation;
+    });
+    expect(response.compaction.summary).toContain("b17ba20:");
+    expect(response.compaction.summary).toContain("42e3557:");
   });
 
   test("malformed and missing sidecars warn and preserve built-in compaction", () => {

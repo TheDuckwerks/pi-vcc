@@ -71,6 +71,13 @@ mkdir -p node_modules/.tmp node_modules/.test-home
 HOME="$PWD/node_modules/.test-home" TMPDIR="$PWD/node_modules/.tmp" bun test
 ```
 
+For a tiny live smoke session, set **Pi core's** `compaction.keepRecentTokens` to
+`0` in the scratch workspace's `.pi/settings.json`, then reload or launch with
+that project configuration approved. This is a smoke-only setting: core otherwise
+rejects a small session before `session_before_compact` runs. VCC's explicit
+`/pi-vcc keep:0` controls its own cut only after that gate; it cannot bypass core
+preparation. Do not lower daily retention just to run this test.
+
 The two upstream private-session tests skip in that isolated HOME. The existing
 Bash/debug snapshot location can be overridden with `PI_VCC_DEBUG_PATH`, allowing
 hook tests to keep snapshots in their own temp directory rather than sharing
