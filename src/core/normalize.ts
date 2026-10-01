@@ -3,6 +3,18 @@ import type { NormalizedBlock } from "../types";
 import { textOf } from "./content";
 import { sanitize } from "./sanitize";
 
+// Retain only execution metadata needed by receipt adapters, not arbitrary
+// tool details or a second copy of potentially large structured output.
+const executionOf = (msg: Message): { exitCode?: number; truncated?: boolean } | undefined => {
+  const data = (msg as any).structuredContent;
+  if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
+  const execution = {
+    ...(Number.isInteger(data.exit_code) ? { exitCode: data.exit_code as number } : {}),
+    ...(typeof data.truncated === "boolean" ? { truncated: data.truncated } : {}),
+  };
+  return Object.keys(execution).length ? execution : undefined;
+};
+
 const normalizeOne = (msg: Message, msgIndex: number | undefined): NormalizedBlock[] => {
   if (msg.role === "user") {
     const blocks: NormalizedBlock[] = [];
@@ -26,10 +38,14 @@ const normalizeOne = (msg: Message, msgIndex: number | undefined): NormalizedBlo
   }
 
   if (msg.role === "toolResult") {
+    const execution = executionOf(msg);
     return [{
       kind: "tool_result",
       name: msg.toolName,
       text: sanitize(textOf(msg.content)),
+      ...(typeof msg.toolCallId === "string" ? { toolCallId: msg.toolCallId } : {}),
+      ...(typeof msg.isError === "boolean" ? { isError: msg.isError } : {}),
+      ...(execution ? { execution } : {}),
       sourceIndex: msgIndex,
     }];
   }
@@ -49,6 +65,7 @@ const normalizeOne = (msg: Message, msgIndex: number | undefined): NormalizedBlo
           kind: "tool_call",
           name: part.name,
           args: part.arguments,
+          ...(typeof part.id === "string" ? { toolCallId: part.id } : {}),
           sourceIndex: msgIndex,
         });
       }

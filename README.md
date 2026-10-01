@@ -1,4 +1,88 @@
-# pi-vcc
+# pi-vcc: Duckwerks recognition POC
+
+Internal-use fork of [sting8k/pi-vcc](https://github.com/sting8k/pi-vcc), based on
+upstream `303e89db` (0.8.0). The npm badge and npm install instructions below refer
+to **upstream**, not this fork. This fork has not been published to npm or switched
+into the daily Duckwerks Pi installation.
+
+## Additive recognition sidecar
+
+V1 teaches extraction one extra command identity without changing ranking,
+tail selection, transcript budgets or recall lineage. Set `recognitionProfilePath`
+in VCC's config to the **absolute path** of a JSON sidecar:
+
+```json
+{
+  "recognitionProfilePath": "/absolute/path/to/pi-vcc/examples/duckwerks-recognition.json"
+}
+```
+
+The supplied sidecar contains:
+
+```json
+{
+  "version": 1,
+  "commitCommands": [
+    { "id": "duckwerks.quack-commit", "tool": "bash", "argvPrefix": ["quack", "commit"] }
+  ]
+}
+```
+
+Profiles are read on each compaction. An absent/empty sidecar leaves built-in
+extraction enabled; missing or invalid files produce a bounded warning and fall
+back to built-in extraction. There is no profile discovery or executable code.
+The contract allows at most 16 rules in a file no larger than 64 KiB. Each rule
+requires a unique id, the `bash` tool, and 2–4 literal executable/subcommand tokens.
+Unknown keys, duplicate identities and unsupported schema versions are rejected.
+
+A recognized invocation has those literal tokens followed by exactly one body-file
+argument. The adapter pairs a call and result by their unique tool-call ID, then
+reads Git commit headers from the matched result. It never opens the body file,
+runs Git, or treats a command attempt as a completed commit. Subjects are capped
+at 200 characters; facts share the existing eight-commit cap. New entries carry a
+result `#N` ref when available. IDs, error status and optional structured
+exit/truncation metadata survive normalization, but raw result bodies are still
+omitted from the brief. User-message refs now also survive noise cleaning.
+
+Supported shell envelopes are standalone invocations, static `cd`/parenthesized
+chains, and chains with `git add`, `git -C PATH add`, Git status, or `rm` cleanup.
+Quoted literal paths are supported. Expansion, heredocs, pipelines, redirection,
+background execution, shell control flow, mixed unrecognized commit producers and
+other command envelopes are deliberately unrecognized. A batch cannot contribute
+more receipt headers than its recognized invocations. An explicit successful
+receipt still counts if a later clause fails; it does not establish whole-batch
+success or repository identity.
+
+### Headless verification
+
+With Bun and the Pi peer dependencies available locally, run `bun test`. The
+frozen, de-identified pair in `tests/fixtures/quack-batch.json` has upstream before
+and fork after text beside it. The profile tests assert exact hash/subject/ref
+capture, fallback, identity pairing, conservative shell matching, chronological
+caps and repeated-merge dedup. `tests/profile-hook.test.ts` exercises the actual
+compaction hook with a fixed cut and session-global index map.
+
+Keep test temp files and synthetic HOME separate from live runtime state when
+running the suite. For the Duckwerks checkout, ignored `node_modules/.tmp` and
+`node_modules/.test-home` serve this purpose:
+
+```bash
+mkdir -p node_modules/.tmp node_modules/.test-home
+HOME="$PWD/node_modules/.test-home" TMPDIR="$PWD/node_modules/.tmp" bun test
+```
+
+The two upstream private-session tests skip in that isolated HOME. The existing
+Bash/debug snapshot location can be overridden with `PI_VCC_DEBUG_PATH`, allowing
+hook tests to keep snapshots in their own temp directory rather than sharing
+`/tmp/pi-vcc-debug.json`. `PI_VCC_CONFIG_PATH` selects an explicit config file for
+an operator-approved trial. Neither override installs this fork. Do not load it
+alongside the upstream compactor in the same Pi invocation.
+
+Further cleanup and any LLM continuity note remain separate from this POC.
+
+---
+
+## Upstream project
 
 [![npm](https://img.shields.io/npm/v/@sting8k/pi-vcc)](https://www.npmjs.com/package/@sting8k/pi-vcc)
 
@@ -18,7 +102,7 @@ Inspired by [VCC](https://github.com/lllyasviel/VCC) **(View-oriented Conversati
 | **Determinism** | Non-deterministic, can hallucinate | Same input = same output, always |
 | **Token reduction** | Varies | 35-99% on real sessions (higher on longer sessions) |
 | **Compaction latency** | Waits for LLM call | 30-470ms, no API calls |
-| **History after compaction** | Gone — agent only sees summary | Active lineage searchable via `vcc_recall` (`scope:"all"` available) |
+| **History after compaction** | Older messages omitted from context; originals remain in the session file | Active lineage searchable via `vcc_recall` (`scope:"all"` available) |
 | **Repeated compactions** | Each rewrite risks losing more | Sections merge and accumulate |
 | **Cost** | Burns tokens on summarization call | Zero — no API calls |
 | **Structure** | Free-form prose | Brief transcript + 4 semantic sections |
@@ -65,7 +149,7 @@ pi-vcc runs automatically when your context window fills up, or on-demand via co
 - **`/pi-vcc keep:N [prompt]`** — keep the last `N` user turns; optional prompt is sent to the agent after compaction.
   - `keep:1` = default, `keep:0` = compact everything, no tail.
 - By default pi-vcc also handles `/compact` and auto-threshold compactions. Set `overrideDefaultCompaction: false` to send those paths back to Pi core.
-- **Smart keep**: when enabled, pi-vcc auto-boosts `keep:1` to a larger N if the tail is small enough (< 5k tokens, capped at 20k).
+- **Smart keep**: when enabled, pi-vcc auto-boosts `keep:1` to a larger N if the tail is small enough (≤ 5k tokens, capped at 25k).
 
 ### Compacted message structure
 
@@ -115,7 +199,7 @@ Sections appear only when relevant — a session with no git commits won't have 
 
 ## Recall (Lossless History)
 
-Pi's default compaction discards old messages permanently. After compaction, the agent only sees the summary.
+Pi's default compaction omits older messages from model context, retaining a summary and recent tail. Original entries remain in the session file.
 
 `vcc_recall` bypasses this by reading the raw session JSONL file directly, so anything dropped by compaction stays reachable. By default it covers the active conversation lineage, regardless of how many compactions have happened. Use `scope:"all"` to also reach messages from other branches, such as turns that were edited or retried. Scope is limited to the current session — earlier sessions are not searchable.
 
@@ -137,7 +221,7 @@ Manual slash command:
 ## Pipeline
 
 1. **Calibrate** — estimate `charsPerToken` from `preparation.tokensBefore` vs actual message chars (falls back to heuristic `4 chars/token`)
-2. **Smart keep** — if `keep:1` tail is small (< 5k tokens), boost keep to the largest N whose tail stays ≤ 20k tokens; explicit `keep:N` is always respected
+2. **Smart keep**: if `keep:1` tail is small (≤ 5k tokens), boost keep to the largest N whose tail stays ≤ 25k tokens; explicit `keep:N` is always respected
 3. **Build cut** — split at the keep boundary; everything before is summarized, the tail stays intact
 4. **Normalize** — raw Pi messages → uniform blocks (user, assistant, tool_call, tool_result, thinking)
 5. **Filter noise** — strip system messages, empty blocks
@@ -162,7 +246,7 @@ Config lives at `~/.pi/agent/pi-vcc-config.json` (auto-scaffolded on first load 
 ```
 
 - **`overrideDefaultCompaction`** *(default `true`)*: when `true`, pi-vcc handles all compaction paths — `/pi-vcc`, `/compact`, and auto-threshold/overflow. Set `false` to restrict pi-vcc to `/pi-vcc` and let the rest fall through to pi core. Existing config files keep whatever value they already have.
-- **`smartKeepTail`** *(default `true`)*: when `true`, pi-vcc boosts the default `keep:1` to the largest `N` whose tail stays ≤ 20k tokens, but only when the `keep:1` tail is already small (≤ 5k tokens). Explicit `keep:N` from the user is always respected.
+- **`smartKeepTail`** *(default `true`)*: when `true`, pi-vcc boosts the default `keep:1` to the largest `N` whose tail stays ≤ 25k tokens, but only when the `keep:1` tail is already small (≤ 5k tokens). Explicit `keep:N` from the user is always respected.
 - **`continueAfterThresholdCompact`** *(default `true`)*: permission for pi-vcc to ask the agent to continue after a successful automatic compaction (threshold or overflow), avoiding a UX cliff where the agent stops after compaction instead of continuing the task. It only applies to pi < 0.84.4 - from 0.84.4 on, pi core resumes the run itself, so pi-vcc never sends its own continue (a second one would land as a ghost turn). `false` disables it on every version.
 - **`debug`** *(default `false`)*: when `true`, each compaction writes detailed info to `/tmp/pi-vcc-debug.json` — message counts, cut boundary, summary preview, sections, token estimate calibration.
 - **`skipForProviders`** *(default `[]`)*: providers pi-vcc defers compaction for, so a provider-specific compaction extension (e.g. remote compaction for OpenAI/Grok models) can take over instead. Matched exactly and case-insensitively against Pi's provider id — check `/model` for the actual id (Grok is `xai`, not `grok`). The check runs per compaction, so switching models mid-session works. Explicit `/pi-vcc` always bypasses the skip.

@@ -1,5 +1,6 @@
 import type { Message } from "@earendil-works/pi-ai";
 import type { FileOps } from "../types";
+import type { RecognitionProfile } from "./recognition-profile";
 import { normalize } from "./normalize";
 import { filterNoise } from "./filter-noise";
 import { buildSections } from "./build-sections";
@@ -10,6 +11,7 @@ export interface CompileInput {
   messages: Message[];
   previousSummary?: string;
   fileOps?: FileOps;
+  recognitionProfile?: RecognitionProfile;
   /**
    * Session-global `#N` index per message position (see
    * src/core/global-indices.ts). Parallel to `messages`; a missing entry
@@ -66,7 +68,15 @@ const mergeHeaderSection = (header: string, prev: string, fresh: string): string
   const isClean = (l: string) => l.startsWith("- ") && !l.includes("<skill") && !l.includes("</skill");
   const prevLines = prev.split("\n").filter(isClean);
   const freshLines = fresh.split("\n").filter(isClean);
-  const combined = [...new Set([...prevLines, ...freshLines])];
+  // Receipt provenance can differ when the same commit is mentioned again.
+  // Dedup its fact without turning a new #N suffix into a second commit entry.
+  const seen = new Set<string>();
+  const combined = [...prevLines, ...freshLines].filter((line) => {
+    const key = header === "Commits" ? line.replace(/\s+\(#\d+\)$/, "") : line;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
   const CAP = header === "Session Goal" ? 8 : header === "Commits" ? 8 : 15;
   const capped = combined.length > CAP ? combined.slice(-CAP) : combined;
   if (capped.length === 0) return "";
@@ -179,7 +189,7 @@ interface CompileWithBriefBlocksOptions {
 const compileWithBriefBlocks = (input: CompileInput, options: CompileWithBriefBlocksOptions = {}): string => {
   const blocks = filterNoise(normalize(input.messages, input.sourceIndices));
   const briefBlocks = options.briefBlocksFor?.(blocks);
-  const data = buildSections({ blocks, briefBlocks, fileOps: input.fileOps });
+  const data = buildSections({ blocks, briefBlocks, fileOps: input.fileOps, recognitionProfile: input.recognitionProfile });
   const fresh = formatSummary(data, { capBriefTranscript: options.capFreshBrief ?? true });
   // Strip any legacy RECALL_NOTE baked into prev summary (pre-fix format)
   // so merge doesn't re-stack it inside the brief.

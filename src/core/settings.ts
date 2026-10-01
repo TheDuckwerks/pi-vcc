@@ -60,6 +60,8 @@ export interface PiVccSettings {
    * counting are all unaffected.
    */
   skipCustomTypes: string[];
+  /** Optional absolute path to a versioned, additive recognition sidecar. */
+  recognitionProfilePath: string;
 }
 
 export const DEFAULT_SETTINGS: PiVccSettings = {
@@ -69,6 +71,7 @@ export const DEFAULT_SETTINGS: PiVccSettings = {
   debug: false,
   skipForProviders: [],
   skipCustomTypes: [],
+  recognitionProfilePath: "",
 };
 
 const readJson = (path: string): Record<string, unknown> | null => {
@@ -91,6 +94,7 @@ export function loadSettings(): PiVccSettings {
   // where .includes becomes substring matching) into the provider check.
   merged.skipForProviders = coerceStringArray(parsed.skipForProviders);
   merged.skipCustomTypes = coerceStringArray(parsed.skipCustomTypes);
+  merged.recognitionProfilePath = typeof parsed.recognitionProfilePath === "string" ? parsed.recognitionProfilePath : "";
   return merged;
 }
 

@@ -36,7 +36,7 @@ describe("normalize", () => {
   it("normalizes tool call", () => {
     const blocks = normalize([assistantWithToolCall("Read", { path: "a.ts" })]);
     expect(blocks).toEqual([{
-      kind: "tool_call", name: "Read", args: { path: "a.ts" }, sourceIndex: 0,
+      kind: "tool_call", name: "Read", args: { path: "a.ts" }, toolCallId: "tc_1", sourceIndex: 0,
     }]);
   });
 
@@ -44,7 +44,20 @@ describe("normalize", () => {
     const blocks = normalize([toolResult("Read", "file contents")]);
     expect(blocks).toEqual([{
       kind: "tool_result", name: "Read",
-      text: "file contents", sourceIndex: 0,
+      text: "file contents", toolCallId: "tc_1", isError: false, sourceIndex: 0,
+    }]);
+  });
+
+  it("keeps bounded execution metadata without duplicating structured output or details", () => {
+    const msg = {
+      ...toolResult("bash", "receipt"),
+      isError: true,
+      structuredContent: { output: "large output", exit_code: 1, truncated: true },
+      details: { privateData: "not extraction input" },
+    } as any;
+    expect(normalize([msg], [124])).toEqual([{
+      kind: "tool_result", name: "bash", text: "receipt", toolCallId: "tc_1",
+      isError: true, execution: { exitCode: 1, truncated: true }, sourceIndex: 124,
     }]);
   });
 

@@ -13,7 +13,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sting8k/pi-vcc.git"
+    "url": "git+https://github.com/TheDuckwerks/pi-vcc.git"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.74.0 <1.0.0",

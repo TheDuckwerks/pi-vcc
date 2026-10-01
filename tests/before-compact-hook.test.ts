@@ -6,7 +6,8 @@ import { registerBeforeCompactHook, PI_VCC_COMPACT_INSTRUCTION, getLastCompactio
 
 let tmpDir: string;
 let CONFIG_PATH: string;
-const DEBUG_PATH = "/tmp/pi-vcc-debug.json";
+let DEBUG_PATH: string;
+const priorDebugPath = process.env.PI_VCC_DEBUG_PATH;
 
 // Auto-continue is version-gated (issue #22). Pin the pi version explicitly so
 // these tests describe behaviour instead of tracking the installed pi package.
@@ -16,11 +17,15 @@ const SELF_RESUME_PI = "0.84.4"; // pi core resumes the run by itself
 beforeAll(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "pi-vcc-test-"));
   CONFIG_PATH = join(tmpDir, "pi-vcc-config.json");
+  DEBUG_PATH = join(tmpDir, "pi-vcc-debug.json");
+  process.env.PI_VCC_DEBUG_PATH = DEBUG_PATH;
   process.env.PI_VCC_CONFIG_PATH = CONFIG_PATH;
 });
 
 afterAll(() => {
   delete process.env.PI_VCC_CONFIG_PATH;
+  if (priorDebugPath == null) delete process.env.PI_VCC_DEBUG_PATH;
+  else process.env.PI_VCC_DEBUG_PATH = priorDebugPath;
   rmSync(tmpDir, { recursive: true, force: true });
 });
 

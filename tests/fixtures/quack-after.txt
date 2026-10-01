@@ -1,0 +1,15 @@
+[Commits]
+- b17ba20: Add on-demand subagent recipes and audit schema ref #134 (#124)
+- 42e3557: Specify the subagent recipe pilot ref #134 (#124)
+
+---
+
+[assistant]
+* bash "git -C /workspace/config add .gitignore pi/README.md pi/subagent-audit-schema.md
+  skills/subagent-recipes/SKILL.md && (cd /workspace/config && quack commit .subagent-recipes-commit) && git -C
+  /workspace/gator add gator-corpus.md specs/202..." (#123)
+
+---
+
+Use `vcc_recall` to search for prior work, decisions, and context from before this summary. Do not redo work already
+completed.

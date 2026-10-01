@@ -5,6 +5,7 @@ import { compileRanked } from "../core/summarize";
 import { buildGlobalIndexById, loadGlobalIndexById } from "../core/global-indices";
 import { parseKeepAndPrompt, PI_VCC_COMPACT_INSTRUCTION } from "../core/compact-args";
 import { loadSettings, type PiVccSettings } from "../core/settings";
+import { loadRecognitionProfile } from "../core/recognition-profile";
 import { calibrateCharsPerToken, estimateMessageContentChars, estimateMessageContentTokens, estimateTokensFromChars } from "../core/token-estimate";
 import type { PiVccCompactionDetails } from "../details";
 import type { CompactionReason } from "../types";
@@ -198,7 +199,7 @@ const normalizeKeepUserTurns = (keepUserTurns: number): number => {
 
 const dbg = (settings: PiVccSettings, data: Record<string, unknown>) => {
   if (!settings.debug) return;
-  try { writeFileSync("/tmp/pi-vcc-debug.json", JSON.stringify(data, null, 2)); } catch {}
+  try { writeFileSync(process.env.PI_VCC_DEBUG_PATH ?? "/tmp/pi-vcc-debug.json", JSON.stringify(data, null, 2)); } catch {}
 };
 
 const previewContent = (content: unknown): string => {
@@ -767,8 +768,13 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI, piVersion: string = 
     const RANKED_BRIEF_BUDGET_TOKENS = 1100;
     const RANKED_BRIEF_CEILING_TOKENS = 2000;
     const RANKED_BRIEF_TOKENS_PER_BLOCK = 15;
+    const recognition = loadRecognitionProfile(settings.recognitionProfilePath);
+    if (recognition.diagnostic) {
+      try { ctx?.ui?.notify?.(recognition.diagnostic, "warning"); } catch {}
+    }
     const summary = compileRanked({
       messages,
+      recognitionProfile: recognition.profile,
       sourceIndices,
       previousSummary: preparation.previousSummary,
       fileOps: {
@@ -805,6 +811,10 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI, piVersion: string = 
       cutWindow,
       tokensBefore: preparation.tokensBefore,
       tokenEstimate,
+      recognition: {
+        ruleIds: recognition.profile?.commitCommands.map((rule) => rule.id) ?? [],
+        diagnostic: recognition.diagnostic,
+      },
       summaryLength: summary.length,
       summaryPreview: summary.slice(0, 500),
       sections: [...summary.matchAll(/^\[(.+?)\]/gm)].map((m) => m[1]),

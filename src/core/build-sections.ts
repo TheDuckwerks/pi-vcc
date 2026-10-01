@@ -5,6 +5,8 @@ import { extractGoals } from "../extract/goals";
 import { extractFiles } from "../extract/files";
 import { extractPreferences, dedupPreferencesAgainstGoals } from "../extract/preferences";
 import { extractCommits, formatCommits } from "../extract/commits";
+import { extractProfileCommits } from "../extract/profile-commits";
+import type { RecognitionProfile } from "./recognition-profile";
 import { buildBriefSections, stringifyBrief } from "./brief";
 
 export interface BuildSectionsInput {
@@ -12,6 +14,7 @@ export interface BuildSectionsInput {
   briefBlocks?: NormalizedBlock[];
   /** Hook-provided file activity; authoritative for files touched before this compaction. */
   fileOps?: FileOps;
+  recognitionProfile?: RecognitionProfile;
 }
 
 const BLOCKER_RE =
@@ -65,11 +68,20 @@ export const buildSections = (input: BuildSectionsInput): SectionData => {
     extractPreferences(blocks),
     sessionGoal,
   );
+  const seenCommits = new Set<string>();
+  const commits = [...extractCommits(blocks), ...extractProfileCommits(blocks, input.recognitionProfile)]
+    .sort((a, b) => (a.blockIndex ?? 0) - (b.blockIndex ?? 0))
+    .filter((commit) => {
+      const key = `${commit.hash ?? ""}::${commit.message}`;
+      if (seenCommits.has(key)) return false;
+      seenCommits.add(key);
+      return true;
+    });
   return {
     sessionGoal,
     outstandingContext: extractOutstandingContext(blocks),
     filesAndChanges: formatFileActivity(blocks, input.fileOps),
-    commits: formatCommits(extractCommits(blocks)),
+    commits: formatCommits(commits),
     userPreferences,
     briefTranscript: stringifyBrief(briefSections),
   };

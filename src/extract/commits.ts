@@ -1,8 +1,12 @@
 import type { NormalizedBlock } from "../types";
 
-interface CommitInfo {
+export interface CommitInfo {
   hash?: string;
   message: string;
+  /** Original block position for chronological additive composition. */
+  blockIndex?: number;
+  /** Result provenance for receipt-based adapters; absent on legacy extraction. */
+  sourceIndex?: number;
 }
 
 const COMMIT_MSG_RE = /git\s+commit[^\n]*?-m\s+(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|\$?'((?:[^'\\]|\\.)*)')/;
@@ -51,7 +55,7 @@ export const extractCommits = (blocks: NormalizedBlock[]): CommitInfo[] => {
     // Dedup by message+hash
     const key = `${hash ?? ""}::${message}`;
     if (!commits.some((c) => `${c.hash ?? ""}::${c.message}` === key)) {
-      commits.push({ hash, message });
+      commits.push({ hash, message, blockIndex: i });
     }
   }
 
@@ -63,7 +67,8 @@ export const formatCommits = (commits: CommitInfo[], limit = 8): string[] => {
   const items = commits.slice(-limit); // keep most recent
   for (const c of items) {
     const prefix = c.hash ? `${c.hash}: ` : "";
-    lines.push(`${prefix}${c.message}`);
+    const ref = c.sourceIndex != null ? ` (#${c.sourceIndex})` : "";
+    lines.push(`${prefix}${c.message}${ref}`);
   }
   return lines;
 };

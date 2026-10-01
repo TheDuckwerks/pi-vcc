@@ -33,6 +33,12 @@ describe("filterNoise", () => {
     expect((result[0] as any).text).toBe("Fix the login");
   });
 
+  it("preserves user provenance when cleaning wrappers", () => {
+    expect(filterNoise([{
+      kind: "user", text: "<system-reminder>noise</system-reminder>\nFix the login", sourceIndex: 42,
+    }])).toEqual([{ kind: "user", text: "Fix the login", sourceIndex: 42 }]);
+  });
+
   it("removes known noise strings", () => {
     const blocks: NormalizedBlock[] = [
       { kind: "user", text: "Continue from where you left off." },
