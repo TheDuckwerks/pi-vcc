@@ -27,6 +27,26 @@ describe("loadAllMessages", () => {
     }
   });
 
+  it("skips system messages but keeps their #N index slot", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-vcc-load-system-"));
+    const file = join(dir, "session.jsonl");
+    try {
+      const lines = [
+        JSON.stringify({ type: "message", id: "s0", message: { role: "system", content: "", sections: { preamble: "p" } } }),
+        JSON.stringify({ type: "message", id: "m1", message: { role: "user", content: "u1" } }),
+        JSON.stringify({ type: "message", id: "s1", message: { role: "system", content: "", toolsAdded: [] } }),
+        JSON.stringify({ type: "message", id: "m2", message: { role: "assistant", content: [{ type: "text", text: "a1" }] } }),
+      ];
+      writeFileSync(file, lines.join("\n") + "\n", "utf8");
+
+      const loaded = loadAllMessages(file, false);
+      expect(loaded.rendered.map((e) => [e.index, e.role])).toEqual([[1, "user"], [3, "assistant"]]);
+      expect(loaded.rawMessages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("loads JSONL incrementally across read-chunk boundaries", () => {
     const dir = mkdtempSync(join(tmpdir(), "pi-vcc-load-chunked-"));
     const file = join(dir, "session.jsonl");
