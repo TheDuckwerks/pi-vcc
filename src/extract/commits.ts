@@ -1,70 +1,40 @@
 import type { NormalizedBlock } from "../types";
+import { extractCommitReceipts } from "./commit-receipts";
 
 export interface CommitInfo {
   hash?: string;
   message: string;
   /** Original block position for chronological additive composition. */
   blockIndex?: number;
-  /** Result provenance for receipt-based adapters; absent on legacy extraction. */
+  /** Matched result provenance; omitted when no global index is available. */
   sourceIndex?: number;
 }
 
-const COMMIT_MSG_RE = /git\s+commit[^\n]*?-m\s+(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|\$?'((?:[^'\\]|\\.)*)')/;
-// Match short hash from git output: "[branch hash]" or "main hash" or 7-12 hex
-const HASH_RE = /\b([0-9a-f]{7,12})\b/;
-
-const firstLineOf = (text: string): string => {
-  const line = text.split(/\\n|\n/)[0] ?? "";
-  return line.trim();
-};
-
-const cleanMessage = (msg: string): string =>
-  msg.replace(/\\"/g, '"').replace(/\\'/g, "'").trim();
-
-/**
- * Extract git commits from bash tool calls (`git commit -m "..."`) and pair
- * with hash from the immediately following tool_result.
- */
-export const extractCommits = (blocks: NormalizedBlock[]): CommitInfo[] => {
-  const commits: CommitInfo[] = [];
-
-  for (let i = 0; i < blocks.length; i++) {
-    const b = blocks[i];
-    if (b.kind !== "tool_call" || b.name !== "bash") continue;
-    const cmd = typeof b.args.command === "string" ? b.args.command : "";
-    if (!/\bgit\s+commit\b/.test(cmd)) continue;
-    const m = cmd.match(COMMIT_MSG_RE);
-    if (!m) continue;
-    const message = firstLineOf(cleanMessage(m[1] ?? m[2] ?? m[3] ?? ""));
-    if (!message) continue;
-
-    let hash: string | undefined;
-    // Look at next tool_result for hash
-    for (let j = i + 1; j < Math.min(blocks.length, i + 3); j++) {
-      const r = blocks[j];
-      if (r.kind !== "tool_result") continue;
-      // Common git commit output: `[branch <hash>] message` or `<branch> <hash>..<hash>`
-      const bracket = r.text.match(/\[\S+\s+([0-9a-f]{7,12})\]/);
-      if (bracket) { hash = bracket[1]; break; }
-      const range = r.text.match(/\b([0-9a-f]{7,12})\.\.([0-9a-f]{7,12})\b/);
-      if (range) { hash = range[2]; break; }
-      const plain = r.text.match(HASH_RE);
-      if (plain) { hash = plain[1]; break; }
-    }
-
-    // Dedup by message+hash
-    const key = `${hash ?? ""}::${message}`;
-    if (!commits.some((c) => `${c.hash ?? ""}::${c.message}` === key)) {
-      commits.push({ hash, message, blockIndex: i });
+/** Narrow static -m grammar. Unsupported flags and producers fail closed. */
+const isGitCommit = (argv: string[]): boolean => {
+  if (argv[0] !== "git") return false;
+  const args = argv[1] === "-C" && argv[2] ? argv.slice(3) : argv.slice(1);
+  if (args[0] !== "commit") return false;
+  let hasMessage = false;
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === "-m" || args[i] === "--message") {
+      if (!args[++i]) return false;
+      hasMessage = true;
+    } else if (!["--amend", "--allow-empty", "--no-verify", "--signoff", "-a"].includes(args[i])) {
+      return false;
     }
   }
-
-  return commits;
+  return hasMessage;
 };
+
+/** Commit subjects and hashes come only from uniquely paired Git receipts. */
+export const extractCommits = (blocks: NormalizedBlock[]): CommitInfo[] =>
+  extractCommitReceipts(blocks, argv => isGitCommit(argv) ? "git.commit" : undefined)
+    .map(({ ruleIds, ...commit }) => commit);
 
 export const formatCommits = (commits: CommitInfo[], limit = 8): string[] => {
   const lines: string[] = [];
-  const items = commits.slice(-limit); // keep most recent
+  const items = commits.slice(-limit);
   for (const c of items) {
     const prefix = c.hash ? `${c.hash}: ` : "";
     const ref = c.sourceIndex != null ? ` (#${c.sourceIndex})` : "";

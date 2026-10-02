@@ -45,7 +45,8 @@ exit/truncation metadata survive normalization, but raw result bodies are still
 omitted from the brief. User-message refs now also survive noise cleaning.
 
 Supported shell envelopes are standalone invocations, static `cd`/parenthesized
-chains, and chains with `git add`, `git -C PATH add`, Git status, or `rm` cleanup.
+chains, and chains with `git add`, `git -C PATH add`, Git status, `git diff --check`,
+`git diff --cached --check` (also with `-C PATH`), `quack log BODY_FILE`, or `rm` cleanup.
 Quoted literal paths are supported. Expansion, heredocs, pipelines, redirection,
 background execution, shell control flow, mixed unrecognized commit producers and
 other command envelopes are deliberately unrecognized. A batch cannot contribute
@@ -89,6 +90,16 @@ alongside the upstream compactor in the same Pi invocation.
 Fresh goal extraction ignores complete observed `background_bash` completion
 notices, including their command/output text. They remain transcript and recall
 evidence. This does not retroactively scrub goal bullets from older summaries.
+
+Built-in Git commit extraction now uses the same unique call/result pairing and
+receipt headers, rather than attempted subjects or nearby hashes. Its narrow
+static grammar supports `git [-C PATH] commit -m TEXT` / `--message TEXT`, with
+optional `--amend`, `--allow-empty`, `--no-verify`, `--signoff` and `-a` flags.
+The receipt supplies the subject and result reference. Failed attempts without
+headers, ambiguous identities, mixed Git/Quack producers and unsupported shell
+syntax add no commit facts. `git commit -F` and additional flags remain unsupported.
+Raw attempts remain transcript and recall evidence; old summary facts are not
+retroactively repaired. Profile-disabled Quack behavior remains unchanged.
 
 Further cleanup and any LLM continuity note remain separate from this POC.
 

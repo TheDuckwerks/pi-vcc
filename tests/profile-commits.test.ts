@@ -8,6 +8,7 @@ import { extractProfileCommits, staticCommandList } from "../src/extract/profile
 import { extractCommits } from "../src/extract/commits";
 import { compileRanked } from "../src/core/summarize";
 import fixture from "./fixtures/quack-batch.json";
+import landFixture from "./fixtures/quack-land-batch.json";
 import profileJson from "../examples/duckwerks-recognition.json";
 
 const profile = parseRecognitionProfile(profileJson);
@@ -43,6 +44,44 @@ describe("Quack before/after replay", () => {
     expect(after).toStartWith("[Commits]\n- b17ba20: Add on-demand subagent recipes and audit schema ref #134 (#124)\n- 42e3557: Specify the subagent recipe pilot ref #134 (#124)");
     expect(after.slice(after.indexOf("\n\n---\n\n") + 7)).toBe(compileRanked(replayInput));
     expect(compileRanked({ ...replayInput, recognitionProfile: profile })).toBe(after);
+  });
+});
+
+describe("observed Land envelope", () => {
+  test("adds both receipt facts, leaving disabled-profile output and the brief unchanged", () => {
+    const messages: any[] = [
+      { role: "assistant", content: [{ type: "toolCall", id: "land", name: "bash", arguments: { command: landFixture.command } }] },
+      { role: "toolResult", toolCallId: "land", toolName: "bash", content: [{ type: "text", text: landFixture.output }], isError: false },
+    ];
+    const input = { messages, sourceIndices: [90, 91] };
+    const before = compileRanked(input);
+    expect(before).not.toContain("[Commits]");
+    expect(compileRanked({ ...input, recognitionProfile: { version: 1, commitCommands: [] } })).toBe(before);
+    const after = compileRanked({ ...input, recognitionProfile: profile });
+    expect(after).toStartWith("[Commits]\n- 8caea7f:");
+    expect(after).toContain("804422d:");
+    expect(after.match(/\(#91\)/g)).toHaveLength(2);
+    expect(after.slice(after.indexOf("\n\n---\n\n") + 7)).toBe(before);
+  });
+
+  test.each([
+    "quack log body.txt && git diff --cached --check && quack commit body.txt",
+    "git diff --check && quack commit body.txt",
+    "git -C /repo diff --cached --check && quack commit body.txt",
+  ])("supports earned scaffolding %s", command => {
+    expect(extract(command)).toHaveLength(1);
+    expect(extract(command, "fatal: failed")).toEqual([]);
+  });
+
+  test.each([
+    "quack log --help && quack commit body.txt",
+    "quack log one.txt two.txt && quack commit body.txt",
+    "git diff && quack commit body.txt",
+    "git diff --cached --check --output=out && quack commit body.txt",
+    "quack log $BODY && quack commit body.txt",
+    "quack log body.txt && git commit -m 'Other' && quack commit body.txt",
+  ])("unsupported Land variants fail closed %s", command => {
+    expect(extract(command)).toEqual([]);
   });
 });
 

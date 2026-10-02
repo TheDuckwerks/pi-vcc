@@ -1,0 +1,5 @@
+{
+  "provenance": "Static Land envelope reconstructed from gator-workspace#146, not a byte-exact session replay. Workspace paths and body filenames are synthetic; receipt hashes and subjects are from the recorded commits.",
+  "command": "quack log /workspace/gator/log.txt && git add session-log.md && git diff --cached --check && quack commit /workspace/gator/commit.txt && cd /workspace/config && git add pi/README.md && git diff --cached --check && quack commit /workspace/config/commit.txt",
+  "output": "[main 8caea7f] Record the approved VCC recognition trial ref TheDuckwerks/gator-workspace#143\n[main 804422d] Record the approved VCC recognition trial ref TheDuckwerks/gator-workspace#143"
+}
