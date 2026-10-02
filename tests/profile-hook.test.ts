@@ -98,6 +98,20 @@ describe("profile reaches the real compaction hook", () => {
     expect(response.compaction.summary).toContain("42e3557:");
   });
 
+  test("explicit goal follows the branch through real compaction, including a later clear", () => {
+    const first = run(undefined, undefined, entries => {
+      entries.push({ type: "custom", id: "pin", customType: "pi-vcc-goal", data: { version: 1, text: "The explicit goal" } });
+      return { fileOps: { read: [], written: [], edited: [] }, tokensBefore: 2000 };
+    }).response.compaction.summary;
+    expect(first).toStartWith("[User-pinned Goal]");
+    expect(first).toContain("The explicit goal");
+    const cleared = run(undefined, first, entries => {
+      entries.push({ type: "custom", id: "clear", customType: "pi-vcc-goal", data: { version: 1, text: null } });
+      return { previousSummary: first, fileOps: { read: [], written: [], edited: [] }, tokensBefore: 2000 };
+    }).response.compaction.summary;
+    expect(cleared).not.toContain("The explicit goal");
+  });
+
   test("malformed and missing sidecars warn and preserve built-in compaction", () => {
     const path = join(dir, "broken.json");
     writeFileSync(path, "broken JSON");

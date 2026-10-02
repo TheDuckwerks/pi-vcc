@@ -92,6 +92,38 @@ evidence. This does not retroactively scrub goal bullets from older summaries.
 
 Further cleanup and any LLM continuity note remain separate from this POC.
 
+## User-pinned session goal
+
+`/goal TEXT` pins one short reference goal (up to 500 characters). `/goal` shows
+it; `/goal clear` clears it. `/goal set TEXT` also works, including when the text
+is the reserved word `clear`. Whitespace is normalized. Commands do not start
+an agent turn, make a model call, or infer progress.
+
+The pin lives in a versioned custom session entry, reconstructed from the active
+branch on each operation. Resume/reload retain it; tree navigation follows the
+chosen ancestry, never abandoned branches. New sessions start empty. Branch
+export retains the metadata. A clear is an explicit tombstone with its reason,
+not deletion of history.
+
+The agent sees one request-local reference message, separate from the system
+prompt. VCC snapshots it under `[User-pinned Goal]` at compaction. That snapshot
+is not authority: subsequent requests remove the snapshot and render current
+metadata, so replacing or clearing a pin cannot revive it from an old summary.
+Ordinary user instructions take precedence. No goal means no reference message,
+and the existing extraction/ranking/cut/recall behavior is unchanged.
+
+`vcc_goal` gives the agent `action: "get"` or `action: "clear"`. Get returns
+`goal: {entryId, text}` or `null`. Clear requires the returned `entryId` as
+`expectedId` and a short accomplishment `reason`; a missing or replaced pin
+refuses without a write. Agents cannot set goals through this tool. Land can
+clear a pin only when its agreed result accomplishes that goal, recording the
+clearance in history; partial, paused and unrelated goals remain.
+
+There is no goal detector, reminder, planner, completion inference, shared file
+or cross-session goal database. The old regex `[Session Goal]` section remains
+historical extraction, distinct from the explicit pin; its broader cleanup is
+still a separate follow-up.
+
 ---
 
 ## Upstream project
