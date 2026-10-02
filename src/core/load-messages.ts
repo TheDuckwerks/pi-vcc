@@ -25,7 +25,11 @@ export const loadAllMessages = (
     // spaces must agree by construction.
     if (!isCountedMessageEntry(entry)) return;
 
-    const allowed = !allowedEntryIds || allowedEntryIds.has(entry.id);
+    // Pi >= 1.0 persists the prompt/tool loadout as `role: "system"` message
+    // entries. They still occupy a `#N` index (shared counting rule) but are
+    // not conversation content, so recall never renders or searches them.
+    const allowed = (!allowedEntryIds || allowedEntryIds.has(entry.id))
+      && entry.message.role !== "system";
     if (allowed) {
       rendered.push(renderMessage(entry.message, messageIndex, full));
       rawMessages.push(entry.message);
