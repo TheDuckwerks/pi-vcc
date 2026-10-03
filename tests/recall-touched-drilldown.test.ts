@@ -160,6 +160,26 @@ describe("vcc_recall mode:touched", () => {
 describe("vcc_recall drill-down", () => {
   const bigContent = Array.from({ length: 40 }, (_, i) => `line ${i}`).join("\n");
 
+  it("resolves file drill-down by global index after skipped Pi 1.0 system entries", async () => {
+    const entries = [
+      { type: "message", id: "s0", message: { role: "system", content: "", sections: { preamble: "p" } } },
+      userMsg("m1", "hello"),
+      { type: "message", id: "s2", message: { role: "system", content: "", toolsAdded: [] } },
+      toolMsg("m3", "write", { path: "src/b.ts", content: "GLOBAL_INDEX_CANARY" }),
+    ];
+    const { dir, file, ids } = makeSession(entries);
+    try {
+      const tool = register();
+      const touched = await invoke(tool, file, ids, { mode: "touched" });
+      expect(touched).toContain("#3 (write)");
+      const out = await invoke(tool, file, ids, { query: "#3:src/b.ts:full" });
+      expect(out).toContain("GLOBAL_INDEX_CANARY");
+      expect(out).not.toContain("not found");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("expands an entry index from touched output", async () => {
     const entries = [
       toolMsg("m0", "edit", { path: "src/a.ts", oldText: "x", newText: "y" }),

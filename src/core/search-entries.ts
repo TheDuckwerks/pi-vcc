@@ -1,4 +1,4 @@
-import type { Message } from "@earendil-works/pi-ai";
+import type { Message, ToolCall } from "@earendil-works/pi-ai";
 import type { RenderedEntry } from "./render-entries";
 import { textOf, isContentBearing, extractToolCallText, extractToolCallArgsText, clip } from "./content";
 
@@ -268,8 +268,8 @@ const RECALL_TOOL_NAME = "vcc_recall";
  *  tool's own arguments (see RECALL_TOOL_NAME). */
 const toolCallArgsText = (content: Message["content"]): string => {
   if (!content || typeof content === "string") return "";
-  const raw = content
-    .filter((part) => part.type === "toolCall")
+  const raw = (content as { type: string }[])
+    .filter((part): part is ToolCall => part.type === "toolCall")
     .filter((part) => part.name?.toLowerCase() !== RECALL_TOOL_NAME)
     .map((part) => extractToolCallArgsText(part.arguments))
     .filter(Boolean)

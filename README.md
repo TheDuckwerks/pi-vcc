@@ -1,9 +1,11 @@
 # pi-vcc: Duckwerks recognition POC
 
 Internal-use fork of [sting8k/pi-vcc](https://github.com/sting8k/pi-vcc), based on
-upstream `303e89db` (0.8.0). The npm badge and npm install instructions below refer
-to **upstream**, not this fork. This fork has not been published to npm. Install
-a reviewed Git revision to try the fork; do not load it alongside upstream.
+upstream v0.8.1 (`f166000`), with the Duckwerks additions retained. The npm
+badge and npm install instructions below refer to **upstream**, not this fork.
+This fork has not been published to npm. Install `git:github.com/TheDuckwerks/pi-vcc`
+to follow this fork's default branch; do not load it alongside upstream.
+Updating that checkout does not itself merge future upstream releases.
 
 ## Additive recognition sidecar
 

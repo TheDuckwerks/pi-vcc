@@ -2,6 +2,12 @@
 
 All notable changes to `@sting8k/pi-vcc` are documented in this file.
 
+## [0.8.1]
+
+### Fixes
+
+- **Pi 1.0 compatibility** — peer range widened to `>=0.74.0 <2.0.0`. Pi 1.0 persists the prompt/tool loadout as `role: "system"` session messages; `vcc_recall` / `/vcc-recall` no longer list them as empty `assistant` entries. They keep their `#N` slot so existing refs stay stable, and `#N:file` drill-down now resolves by index instead of array position. Compaction itself was already unaffected.
+
 ## [0.8.0]
 
 ### Features
