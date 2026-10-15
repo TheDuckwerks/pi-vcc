@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { convertToLlm, VERSION } from "@earendil-works/pi-coding-agent";
 import { writeFileSync } from "fs";
 import { compileRanked } from "../core/summarize";
-import { readPinnedGoal, withPinnedGoal } from "../core/pinned-goal";
+import { requestNestGoal, withNestGoal } from "../core/goal-reference";
 import { buildGlobalIndexById, loadGlobalIndexById } from "../core/global-indices";
 import { parseKeepAndPrompt, PI_VCC_COMPACT_INSTRUCTION } from "../core/compact-args";
 import { debugPath, loadSettings, type PiVccSettings } from "../core/settings";
@@ -773,7 +773,7 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI, piVersion: string = 
     if (recognition.diagnostic) {
       try { ctx?.ui?.notify?.(recognition.diagnostic, "warning"); } catch {}
     }
-    const summary = withPinnedGoal(compileRanked({
+    const summary = withNestGoal(compileRanked({
       messages,
       recognitionProfile: recognition.profile,
       sourceIndices,
@@ -787,7 +787,7 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI, piVersion: string = 
         maxBriefCharsCeiling: Math.round(RANKED_BRIEF_CEILING_TOKENS * tokenEstimate.charsPerToken),
         briefCharsPerBlock: Math.round(RANKED_BRIEF_TOKENS_PER_BLOCK * tokenEstimate.charsPerToken),
       },
-    }), readPinnedGoal(branchEntries));
+    }), requestNestGoal(pi, branchEntries));
 
     const branchIds = branchEntries.map((e: any) => e.id);
     const cutIdx = branchIds.indexOf(firstKeptEntryId);

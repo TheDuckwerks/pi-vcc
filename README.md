@@ -105,45 +105,29 @@ retroactively repaired. Profile-disabled Quack behavior remains unchanged.
 
 Further cleanup and any LLM continuity note remain separate from this POC.
 
-## User-pinned session goal
+## Nest-owned session goal
 
-`/goal TEXT` pins one short reference goal (up to 500 characters). `/goal` shows
-it; `/goal clear` clears it. `/goal set TEXT` also works, including when the text
-is the reserved word `clear`. Whitespace is normalized. Commands do not start
-an agent turn, make a model call, or infer progress.
+Nest, not VCC, owns `/goal`, the `nest_state` tool and the coherent session work
+record. VCC no longer registers goal commands/tools, writes goal metadata or
+injects a competing goal reference. Existing `pi-vcc-goal` entries remain history;
+Nest handles their read-only compatibility/conversion along with old cards.
 
-The pin lives in a versioned custom session entry, reconstructed from the active
-branch on each operation. Resume/reload retain it; tree navigation follows the
-chosen ancestry, never abandoned branches. New sessions start empty. Branch
-export retains the metadata. A clear is an explicit tombstone with its reason,
-not deletion of history.
+During compaction, VCC emits the synchronous read-only `duckwerks:nest-goal`
+event with `{entries, reply}`. Nest reads that branch's current work record and
+calls `reply({entryId, text})` or `reply(null)`. VCC validates the bounded response
+and snapshots only the goal under `[Active work goal]`. No listener, missing
+state or provider failure means no snapshot, not a failed compaction or fallback
+to an old VCC goal. No source import or duplicated Nest metadata reader is needed.
 
-The agent sees one request-local reference message, separate from the system
-prompt. VCC snapshots it under `[User-pinned Goal]` at compaction. That snapshot
-is not authority: subsequent requests remove the snapshot and render current
-metadata, so replacing or clearing a pin cannot revive it from an old summary.
-Ordinary user instructions take precedence. No goal means no reference message,
-and the existing extraction/ranking/cut/recall behavior is unchanged.
+Nest re-presents the full current record on context requests after compaction,
+including scope, phase, next gate and blockers. It strips stale leading goal
+snapshots and replaces the reference after changes or clears. VCC's summary is
+an orientation snapshot, never the authority or another editable store. Replacing
+VCC does not remove session work state or its commands.
 
-`vcc_goal` gives the agent `action: "get"`, `"set"`, or `"clear"`. Get returns
-`goal: {entryId, text}` or `null`. Set requires `text` and a `reason` identifying
-the user's explicit request or approval. It creates a pin when absent and returns
-the stored goal; setting identical text is idempotent. Replacing different text
-requires the current `entryId` as `expectedId` and user approval of the change.
-A supplied stale ID refuses even if the pin has since been cleared. The tool
-checks state and validates text/reason; the agent remains responsible for having
-actual user authorization, not inferring a goal from research. Setting a goal
-never authorizes work.
-
-Clear requires the returned `entryId` as `expectedId` and a short accomplishment
-`reason`; a missing or replaced pin refuses without a write. Land can clear a
-pin only when its agreed result accomplishes that goal, recording the clearance
-in history; partial, paused and unrelated goals remain.
-
-There is no goal detector, reminder, planner, completion inference, shared file
-or cross-session goal database. The old regex `[Session Goal]` section remains
-historical extraction, distinct from the explicit pin; its broader cleanup is
-still a separate follow-up.
+Extraction/ranking/cut/recall remain unchanged. The old regex `[Session Goal]`
+section is historical extraction, not the active outcome; broader cleanup is a
+separate follow-up. Focused hook tests cover snapshots, replacement and clear.
 
 ---
 
