@@ -25,7 +25,7 @@ function harness(manager = SessionManager.inMemory("/synthetic")) {
 }
 
 describe("session reference pin", () => {
-  test("manual set/show/clear, normalized and bounded, no agent setter", async () => {
+  test("manual set/show/clear remains normalized and bounded", async () => {
     const h = harness();
     await h.command("");
     expect(h.notices.pop()).toBe("No pinned goal.");
@@ -39,6 +39,28 @@ describe("session reference pin", () => {
     expect(readPinnedGoal(h.manager.getBranch())?.text).toBe("clear");
     expect(() => normalizeGoal("\u001b[31mhello")).toThrow();
     expect(() => normalizeGoal("   ")).toThrow();
+  });
+
+  test("agent set creates an authorized pin, is idempotent, and guards replacement", async () => {
+    const h = harness();
+    await expect(h.tool({ action: "set", text: "Requested goal" })).rejects.toThrow();
+    await expect(h.tool({ action: "set", text: " ", reason: "User requested it" })).rejects.toThrow();
+    expect(readPinnedGoal(h.manager.getBranch())).toBeNull();
+    const first = (await h.tool({ action: "set", text: "Requested   goal", reason: "User explicitly requested this goal" })).details.goal;
+    expect(first.text).toBe("Requested goal");
+    expect(first.entryId).toBeTruthy();
+    const count = h.manager.getBranch().length;
+    expect((await h.tool({ action: "set", text: first.text, reason: "Same request" })).details.goal).toEqual(first);
+    expect(h.manager.getBranch()).toHaveLength(count);
+    await expect(h.tool({ action: "set", text: "Different goal", reason: "User approved a change" })).rejects.toThrow();
+    await expect(h.tool({ action: "set", text: "x".repeat(501), expectedId: first.entryId, reason: "User approved" })).rejects.toThrow();
+    const second = (await h.tool({ action: "set", text: "Different goal", expectedId: first.entryId, reason: "User explicitly approved replacement" })).details.goal;
+    expect(second.text).toBe("Different goal");
+    await expect(h.tool({ action: "set", text: "Stale write", expectedId: first.entryId, reason: "Earlier approval" })).rejects.toThrow();
+    expect(readPinnedGoal(h.manager.getBranch())).toEqual(second);
+    await h.command("clear");
+    await expect(h.tool({ action: "set", text: "Stale recreation", expectedId: second.entryId, reason: "Earlier approval" })).rejects.toThrow();
+    expect(readPinnedGoal(h.manager.getBranch())).toBeNull();
   });
 
   test("guarded agent clear rejects absent, replaced, and reasonless pins", async () => {
@@ -117,7 +139,7 @@ describe("session reference pin", () => {
       manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "Ready" }],
         api: "openai-responses", provider: "synthetic", model: "synthetic", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 0 });
       const h = harness(manager);
-      await h.command("Survive compaction and resume");
+      await h.tool({ action: "set", text: "Survive compaction and resume", reason: "User requested this goal" });
       const expected = readPinnedGoal(manager.getBranch());
       manager.appendCompaction(withPinnedGoal("A summary", expected), "", 1000);
       expect(readPinnedGoal(manager.getBranch())).toEqual(expected);

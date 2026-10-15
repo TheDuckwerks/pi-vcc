@@ -35,15 +35,30 @@ export function registerGoal(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "vcc_goal",
     label: "VCC Goal",
-    description: "Read the user-pinned session reference goal, or clear an accomplished pin. " +
-      "Clear requires its entryId from get and a reason; refuses a replaced pin. Does not set goals or authorize work.",
+    description: "Get, set or clear the session reference goal. Set only a goal explicitly requested or approved by the user; never infer a new goal from research. Set requires text and a reason identifying that authorization. Replacing a different goal additionally requires its entryId from get as expectedId and user approval of the change. Clear requires expectedId and an accomplishment reason. Stale pins are refused; setting a goal does not authorize work.",
     parameters: Type.Object({
-      action: Type.Union([Type.Literal("get"), Type.Literal("clear")]),
-      expectedId: Type.Optional(Type.String({ description: "Current pin entryId, required for clear" })),
-      reason: Type.Optional(Type.String({ description: "Why the agreed goal is accomplished, required for clear" })),
+      action: Type.Union([Type.Literal("get"), Type.Literal("set"), Type.Literal("clear")]),
+      text: Type.Optional(Type.String({ description: "User-requested or approved goal, required for set; up to 500 characters" })),
+      expectedId: Type.Optional(Type.String({ description: "Current pin entryId from get, required to replace or clear; omit when creating a pin" })),
+      reason: Type.Optional(Type.String({ description: "For set, identify the user's request or approval; for clear, why the agreed goal is accomplished" })),
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const current = readPinnedGoal(ctx.sessionManager.getBranch());
+      if (params.action === "set") {
+        const text = normalizeGoal(params.text ?? "");
+        const reason = normalizeGoal(params.reason ?? "");
+        if (params.expectedId !== undefined && params.expectedId !== current?.entryId) {
+          throw new Error("Goal changed or is absent; read it again before setting.");
+        }
+        if (current && current.text !== text && params.expectedId !== current.entryId) {
+          throw new Error("A different goal is pinned; read it and obtain user approval before replacing it with expectedId.");
+        }
+        if (!current || current.text !== text) {
+          pi.appendEntry(GOAL_ENTRY_TYPE, { version: 1, text, reason, source: "agent" });
+        }
+        const details = { goal: readPinnedGoal(ctx.sessionManager.getBranch()) };
+        return { content: [{ type: "text", text: JSON.stringify(details) }], details };
+      }
       if (params.action === "clear") {
         if (!current || !params.expectedId || params.expectedId !== current.entryId) {
           throw new Error("Goal changed or is absent; read it again before clearing.");

@@ -125,12 +125,20 @@ metadata, so replacing or clearing a pin cannot revive it from an old summary.
 Ordinary user instructions take precedence. No goal means no reference message,
 and the existing extraction/ranking/cut/recall behavior is unchanged.
 
-`vcc_goal` gives the agent `action: "get"` or `action: "clear"`. Get returns
-`goal: {entryId, text}` or `null`. Clear requires the returned `entryId` as
-`expectedId` and a short accomplishment `reason`; a missing or replaced pin
-refuses without a write. Agents cannot set goals through this tool. Land can
-clear a pin only when its agreed result accomplishes that goal, recording the
-clearance in history; partial, paused and unrelated goals remain.
+`vcc_goal` gives the agent `action: "get"`, `"set"`, or `"clear"`. Get returns
+`goal: {entryId, text}` or `null`. Set requires `text` and a `reason` identifying
+the user's explicit request or approval. It creates a pin when absent and returns
+the stored goal; setting identical text is idempotent. Replacing different text
+requires the current `entryId` as `expectedId` and user approval of the change.
+A supplied stale ID refuses even if the pin has since been cleared. The tool
+checks state and validates text/reason; the agent remains responsible for having
+actual user authorization, not inferring a goal from research. Setting a goal
+never authorizes work.
+
+Clear requires the returned `entryId` as `expectedId` and a short accomplishment
+`reason`; a missing or replaced pin refuses without a write. Land can clear a
+pin only when its agreed result accomplishes that goal, recording the clearance
+in history; partial, paused and unrelated goals remain.
 
 There is no goal detector, reminder, planner, completion inference, shared file
 or cross-session goal database. The old regex `[Session Goal]` section remains
