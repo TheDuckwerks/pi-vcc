@@ -9,18 +9,16 @@ export const debugPath = (): string => process.env.PI_VCC_DEBUG_PATH ?? join(get
 /** Backwards-compat snapshot export; actual I/O resolves the current path. */
 export const SETTINGS_PATH = settingsPath();
 
+export type Compactor = "pi" | "vcc";
+
 export interface PiVccSettings {
-  /**
-   * When true (default), pi-vcc handles ALL compactions:
-   *   - /compact (no args)
-   *   - /compact <text>
-   *   - auto threshold / overflow
-   *   - /pi-vcc (always handled regardless)
-   *
-   * When false, pi-vcc only handles /pi-vcc; everything else falls back to
-   * pi core's default LLM-based compaction. Existing config files keep their
-   * stored value; the new default applies to fresh installs only.
-   */
+  /** Fallback for ordinary /compact and automatic compactions. */
+  defaultCompactor: Compactor;
+  /** Case-insensitive provider id -> selected compactor. */
+  compactorsByProvider: Record<string, Compactor>;
+  /** Case-insensitive `provider/model-id` -> selected compactor. */
+  compactorsByModel: Record<string, Compactor>;
+  /** Legacy compatibility setting. New configs should use defaultCompactor. */
   overrideDefaultCompaction: boolean;
   /**
    * When true (default), pi-vcc boosts the default keep-tail when the current
@@ -67,7 +65,10 @@ export interface PiVccSettings {
 }
 
 export const DEFAULT_SETTINGS: PiVccSettings = {
-  overrideDefaultCompaction: true,
+  defaultCompactor: "pi",
+  compactorsByProvider: {},
+  compactorsByModel: {},
+  overrideDefaultCompaction: false,
   smartKeepTail: true,
   continueAfterThresholdCompact: true,
   debug: false,
@@ -88,10 +89,24 @@ const readJson = (path: string): Record<string, unknown> | null => {
 const coerceStringArray = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
+const coerceCompactorMap = (value: unknown): Record<string, Compactor> => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(
+    (entry): entry is [string, Compactor] => typeof entry[0] === "string" && (entry[1] === "pi" || entry[1] === "vcc"),
+  ));
+};
+
 export function loadSettings(): PiVccSettings {
   const parsed = readJson(settingsPath());
   if (!parsed || typeof parsed !== "object") return { ...DEFAULT_SETTINGS };
   const merged = { ...DEFAULT_SETTINGS, ...(parsed as Partial<PiVccSettings>) };
+  if (parsed.defaultCompactor !== "pi" && parsed.defaultCompactor !== "vcc") {
+    merged.defaultCompactor = typeof parsed.overrideDefaultCompaction === "boolean"
+      ? parsed.overrideDefaultCompaction ? "vcc" : "pi"
+      : DEFAULT_SETTINGS.defaultCompactor;
+  }
+  merged.compactorsByProvider = coerceCompactorMap(parsed.compactorsByProvider);
+  merged.compactorsByModel = coerceCompactorMap(parsed.compactorsByModel);
   // A blind spread would leak a malformed array value (e.g. a bare string,
   // where .includes becomes substring matching) into the provider check.
   merged.skipForProviders = coerceStringArray(parsed.skipForProviders);
@@ -124,7 +139,9 @@ export function scaffoldSettings(): void {
     const next: Record<string, unknown> = { ...parsed };
     for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
       if (!(key in next)) {
-        next[key] = value;
+        next[key] = key === "defaultCompactor" && typeof next.overrideDefaultCompaction === "boolean"
+          ? next.overrideDefaultCompaction ? "vcc" : "pi"
+          : value;
         changed = true;
       }
     }

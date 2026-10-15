@@ -157,7 +157,7 @@ describe("section-aware brief ranking prototype", () => {
     });
 
     expect(ranked.length).toBeLessThan(baseline.length);
-    expect(ranked).toContain("[Session Goal]");
+    expect(ranked).not.toContain("[Session Goal]");
     expect(ranked).toContain("Fix auth bug");
     expect(ranked).toContain('* Edit "src/auth.ts"');
     expect(ranked).toContain('* bash "bun test tests/auth.test.ts"');

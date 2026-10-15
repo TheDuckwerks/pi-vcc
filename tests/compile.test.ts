@@ -20,21 +20,22 @@ describe("compile", () => {
         assistantText("Found the issue.\n1. Fix validation"),
       ],
     });
-    expect(r).toContain("[Session Goal]");
-    expect(r).toContain("Fix login bug");
+    expect(r).not.toContain("[Session Goal]");
     expect(r).toContain("---");
     expect(r).toContain("[user]\nFix login bug");
     expect(r).toContain('* Read "auth.ts"');
     expect(r).toContain("Found the issue.");
   });
 
-  it("merges previous summary goals", () => {
+  it("drops legacy interpretive sections but retains prior transcript evidence", () => {
     const r = compile({
-      messages: [userMsg("New task")],
+      messages: [userMsg("New task"), assistantText("Working on the new task.")],
       previousSummary: "[Session Goal]\n- Original goal\n\n---\n\n[user]\nOriginal goal",
     });
-    expect(r).toContain("- Original goal");
-    expect(r).toContain("- New task");
+    expect(r).not.toContain("[Session Goal]");
+    expect(r).not.toContain("[Prior compaction summary");
+    expect(r).toContain("Original goal");
+    expect(r).toContain("New task");
   });
 
   it("appends brief transcript on merge", () => {
@@ -72,7 +73,7 @@ describe("compile", () => {
     const previousSummary = `[Session Goal]\n- goal\n\n---\n\n${longTranscript}`;
     const r = compile({
       previousSummary,
-      messages: [userMsg("latest")],
+      messages: [userMsg("latest"), assistantText("The latest work is ready.")],
     });
     expect(r).toContain("earlier lines omitted");
     expect(r).toContain("latest");
@@ -89,14 +90,12 @@ describe("compile", () => {
 });
 
 describe("compile fileOps wiring", () => {
-  it("renders hook-provided file ops in the summary", () => {
-    // Guards the seam: CompileInput.fileOps -> buildSections -> extractFiles.
-    // Without it the hook's authoritative read/modified sets are silently dropped.
+  it("does not label host file-operation hints as confirmed changes", () => {
     const out = compile({
       messages: [userMsg("check the config")],
       fileOps: { readFiles: ["src/only-from-hook.ts"], modifiedFiles: ["src/changed-by-hook.ts"] },
     });
-    expect(out).toContain("only-from-hook.ts");
-    expect(out).toContain("changed-by-hook.ts");
+    expect(out).not.toContain("only-from-hook.ts");
+    expect(out).not.toContain("changed-by-hook.ts");
   });
 });

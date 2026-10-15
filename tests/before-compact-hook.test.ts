@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } fr
 import { existsSync, unlinkSync, writeFileSync, readFileSync, mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { buildSessionProjection } from "@earendil-works/pi-coding-agent";
 import { registerBeforeCompactHook, PI_VCC_COMPACT_INSTRUCTION, getLastCompactionStats, formatCompactionStats, buildOwnCut, applyTailBudget } from "../src/hooks/before-compact";
 
 let tmpDir: string;
@@ -98,6 +99,27 @@ const comp = (id: string, firstKeptEntryId?: string) => ({ id, type: "compaction
 const custom = (id: string, customType: string, content: string | unknown[], extra: Record<string, unknown> = {}) => ({ id, type: "custom_message", customType, content, display: false, timestamp: "2026-01-01T00:00:00.000Z", ...extra });
 const branchSummary = (id: string, summary: string, fromId = "f1") => ({ id, type: "branch_summary", summary, fromId, timestamp: "2026-01-01T00:00:00.000Z" });
  
+describe("buildOwnCut honors Pi's context projection", () => {
+  test("uses replacement content and excludes intentionally omitted messages", () => {
+    const entries = [
+      msg("u1", "user", "original private content"),
+      msg("a1", "assistant", "response"),
+      { id: "edit1", type: "context_edit", parentId: "a1", targetId: "u1", replacement: { content: "redacted content" } },
+      msg("u2", "user", "omit this entirely"),
+      { id: "edit2", type: "context_edit", parentId: "u2", targetId: "u2", replacement: null },
+      msg("a2", "assistant", "current response"),
+    ].map((entry, i, all) => ({ ...entry, parentId: i ? all[i - 1].id : null }));
+    const projection = buildSessionProjection(entries as any, "a2");
+    const cut = buildOwnCut(entries, 0, projection.entries);
+    expect(cut.ok).toBe(true);
+    if (!cut.ok) return;
+    const contents = cut.messages.map((message: any) => JSON.stringify(message.content)).join(" ");
+    expect(contents).toContain("redacted content");
+    expect(contents).not.toContain("original private content");
+    expect(contents).not.toContain("omit this entirely");
+  });
+});
+
 describe("registerBeforeCompactHook: cancel paths", () => {
   beforeEach(() => {
     if (existsSync(DEBUG_PATH)) unlinkSync(DEBUG_PATH);
@@ -105,6 +127,14 @@ describe("registerBeforeCompactHook: cancel paths", () => {
   afterEach(() => {
     if (existsSync(CONFIG_PATH)) unlinkSync(CONFIG_PATH);
     if (existsSync(DEBUG_PATH)) unlinkSync(DEBUG_PATH);
+  });
+
+  test("ordinary compaction defaults to Pi", () => {
+    setConfig({});
+    const { pi, invokeBefore } = createMockPi();
+    registerBeforeCompactHook(pi);
+    const entries = [msg("u1", "user"), msg("a1", "assistant"), msg("u2", "user"), msg("a2", "assistant")];
+    expect(invokeBefore(makeEvent(entries))).toBeUndefined();
   });
  
   test("/pi-vcc with too few live messages cancels and notifies warning", () => {

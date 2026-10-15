@@ -129,9 +129,48 @@ Extraction/ranking/cut/recall remain unchanged. The old regex `[Session Goal]`
 section is historical extraction, not the active outcome; broader cleanup is a
 separate follow-up. Focused hook tests cover snapshots, replacement and clear.
 
+### Compactor selection and factual VCC mode
+
+Historical retrieval remains available through `vcc_recall` regardless of which
+compactor is selected. Pi semantic compaction is the default; `/pi-vcc` remains a
+one-shot VCC compaction command. `/compactor [pi|vcc|auto|status]` sets or inspects
+a branch-local session choice. `auto` removes the effective session override and
+returns to configured policy.
+
+Ordinary compaction precedence is one-shot `/pi-vcc`, session override, exact
+`provider/model-id` rule, provider rule, then `defaultCompactor`. Rule maps are
+case-insensitive. Example:
+
+```json
+{
+  "defaultCompactor": "pi",
+  "compactorsByProvider": { "anthropic": "vcc" },
+  "compactorsByModel": { "openai/gpt-6.1-sol": "pi" }
+}
+```
+
+The old `overrideDefaultCompaction` boolean is accepted only when the new
+`defaultCompactor` key is absent. Fresh and scaffolded configs default to Pi.
+`skipForProviders` remains a lower-precedence legacy exclusion.
+
+VCC extracts from Pi's active session projection, not raw transcript JSONL, so
+context-edit replacements and intentional omissions apply. Its compact output
+contains source-indexed conversational excerpts, observed file-tool calls (not
+claims of successful changes), and receipt-supported commits. It no longer infers
+active goals, preferences or blockers. A prior non-VCC summary is carried as an
+opaque `[Prior compaction summary (unverified)]` record; VCC does not parse it as
+fact or replay raw messages beyond Pi's projection boundary. Its original content
+remains searchable with `vcc_recall`.
+
+The prior summary remains unverified even when authored by Pi's semantic
+summarizer. Nest's separately owned active goal may still be included from its
+read-only authority event. Legacy VCC sections survive only inside the attributed
+opaque prior-summary record; future VCC compactions do not merge them as facts.
+
 ---
 
 ## Upstream project
+
 
 [![npm](https://img.shields.io/npm/v/@sting8k/pi-vcc)](https://www.npmjs.com/package/@sting8k/pi-vcc)
 

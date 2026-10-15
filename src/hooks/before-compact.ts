@@ -2,11 +2,13 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { convertToLlm, VERSION } from "@earendil-works/pi-coding-agent";
 import { writeFileSync } from "fs";
 import { compileRanked } from "../core/summarize";
-import { requestNestGoal, withNestGoal } from "../core/goal-reference";
+import { requestNestGoal, stripGoalSnapshot, withNestGoal } from "../core/goal-reference";
 import { buildGlobalIndexById, loadGlobalIndexById } from "../core/global-indices";
 import { parseKeepAndPrompt, PI_VCC_COMPACT_INSTRUCTION } from "../core/compact-args";
 import { debugPath, loadSettings, type PiVccSettings } from "../core/settings";
 import { loadRecognitionProfile } from "../core/recognition-profile";
+import { resolveCompactor } from "../core/compactor-policy";
+import { buildSessionProjection } from "@earendil-works/pi-coding-agent";
 import { calibrateCharsPerToken, estimateMessageContentChars, estimateMessageContentTokens, estimateTokensFromChars } from "../core/token-estimate";
 import type { PiVccCompactionDetails } from "../details";
 import type { CompactionReason } from "../types";
@@ -272,7 +274,16 @@ export type OwnCutResult =
     }
   | { ok: false; reason: OwnCutCancelReason };
 
-const collectLiveMessages = (branchEntries: any[]): EntryWithMessage[] => {
+const collectLiveMessages = (branchEntries: any[], projectedEntries?: any[]): EntryWithMessage[] => {
+  if (projectedEntries) {
+    return projectedEntries.flatMap((projected: any) => {
+      const entry = projected.sourceEntry;
+      if (!entry || entry.type === "compaction" || !Array.isArray(projected.messages)) return [];
+      return projected.messages
+        .filter((message: any) => message?.role !== "system")
+        .map((message: any) => ({ entry, message }));
+    });
+  }
   // Find the last compaction entry and its firstKeptEntryId
   let lastCompactionIdx = -1;
   let lastKeptId: string | undefined;
@@ -313,9 +324,9 @@ const collectLiveMessages = (branchEntries: any[]): EntryWithMessage[] => {
   return liveMessages;
 };
 
-export function buildOwnCut(branchEntries: any[], keepUserTurns = 1): OwnCutResult {
+export function buildOwnCut(branchEntries: any[], keepUserTurns = 1, projectedEntries?: any[]): OwnCutResult {
   const normalizedKeepUserTurns = normalizeKeepUserTurns(keepUserTurns);
-  const liveMessages = collectLiveMessages(branchEntries);
+  const liveMessages = collectLiveMessages(branchEntries, projectedEntries);
 
   if (liveMessages.length === 0) return { ok: false, reason: "no_live_messages" };
   if (liveMessages.length <= 2) return { ok: false, reason: "too_few_live_messages" };
@@ -549,20 +560,35 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI, piVersion: string = 
     const { reason, willRetry } = readCompactionEventContext(event);
     const settings = loadSettings();
 
-    // Always handle explicit /pi-vcc marker.
-    // Otherwise, only handle when user opted in via settings.
     const { isPiVcc, keepUserTurns, keepUserTurnsExplicit, followUpPrompt } = parseCompactionInstructions(customInstructions);
     pendingFollowUpPrompt = null;
-    if (!isPiVcc && !settings.overrideDefaultCompaction) return;
-    // Provider-level opt-out (#27): defer to the provider's own compaction
-    // (e.g. remote compaction via pi-codex-compaction). Checked at call time
-    // because the model can change mid-session via /model. Explicit /pi-vcc
-    // bypasses the skip; undefined model never skips.
-    const provider = (ctx as any)?.model?.provider;
-    if (!isPiVcc && typeof provider === "string" &&
-        settings.skipForProviders.some((p) => p.toLowerCase() === provider.toLowerCase())) return;
+    const selection = resolveCompactor(settings, ctx, isPiVcc);
+    if (selection.compactor !== "vcc") return;
 
-    const calibrationCut = buildOwnCut(branchEntries as any[], 0);
+    let projection: any;
+    const projectionIds = new Set<string>();
+    const hasValidProjectionIds = branchEntries.every((entry: any) => {
+      const id = entry?.id;
+      if (typeof id !== "string" || !id || projectionIds.has(id)) return false;
+      projectionIds.add(id);
+      return true;
+    });
+    try {
+      if (!hasValidProjectionIds) throw new Error("Session branch has missing or duplicate entry IDs");
+      const projectedBranch = branchEntries.map((entry: any, index: number) => ({
+        ...entry,
+        parentId: index ? branchEntries[index - 1]?.id ?? null : null,
+      }));
+      projection = buildSessionProjection(projectedBranch, projectedBranch.at(-1)?.id);
+    } catch {
+      projection = undefined;
+    }
+    if (!projection?.entries) {
+      try { ctx?.ui?.notify?.("pi-vcc could not read Pi's projected session; compaction left to Pi", "warning"); } catch {}
+      return;
+    }
+
+    const calibrationCut = buildOwnCut(branchEntries as any[], 0, projection.entries);
     const calibrationMessageChars = calibrationCut.ok
       ? calibrationCut.messages.reduce(
           (sum: number, message: any) => sum + estimateMessageContentChars(message.content),
@@ -586,7 +612,7 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI, piVersion: string = 
       smartKeepTail: settings.smartKeepTail,
       charsPerToken: tokenEstimate.charsPerToken,
     });
-    let ownCut = buildOwnCut(branchEntries as any[], smartKeep.keepUserTurns);
+    let ownCut = buildOwnCut(branchEntries as any[], smartKeep.keepUserTurns, projection.entries);
     // Default path only: rescue autonomous / oversized-tail sessions with a
     // token-budget cut. Explicit keep:N is respected absolutely (no-op here).
     if (ownCut.ok && !keepUserTurnsExplicit) {
@@ -773,11 +799,14 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI, piVersion: string = 
     if (recognition.diagnostic) {
       try { ctx?.ui?.notify?.(recognition.diagnostic, "warning"); } catch {}
     }
-    const summary = withNestGoal(compileRanked({
+    const previousCompaction = [...branchEntries].reverse().find((entry: any) => entry.type === "compaction");
+    const previousDetails = previousCompaction?.details as PiVccCompactionDetails | undefined;
+    const previousIsFactualVcc = previousDetails?.compactor === "pi-vcc" && previousDetails.version >= 3;
+    const summaryCore = compileRanked({
       messages,
       recognitionProfile: recognition.profile,
       sourceIndices,
-      previousSummary: preparation.previousSummary,
+      previousSummary: previousIsFactualVcc ? preparation.previousSummary : undefined,
       fileOps: {
         readFiles: [...preparation.fileOps.read],
         modifiedFiles: [...preparation.fileOps.written, ...preparation.fileOps.edited],
@@ -787,7 +816,15 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI, piVersion: string = 
         maxBriefCharsCeiling: Math.round(RANKED_BRIEF_CEILING_TOKENS * tokenEstimate.charsPerToken),
         briefCharsPerBlock: Math.round(RANKED_BRIEF_TOKENS_PER_BLOCK * tokenEstimate.charsPerToken),
       },
-    }), requestNestGoal(pi, branchEntries));
+    });
+    const currentGoal = requestNestGoal(pi, branchEntries);
+    const previousText = typeof preparation.previousSummary === "string"
+      ? stripGoalSnapshot(preparation.previousSummary)
+      : undefined;
+    const opaquePrevious = !previousIsFactualVcc && previousText
+      ? `\n\n---\n\n[Prior compaction summary (unverified)]\n${previousText}`
+      : "";
+    const summary = withNestGoal(summaryCore + opaquePrevious, currentGoal);
 
     const branchIds = branchEntries.map((e: any) => e.id);
     const cutIdx = branchIds.indexOf(firstKeptEntryId);
@@ -823,9 +860,8 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI, piVersion: string = 
 
     const details: PiVccCompactionDetails = {
       compactor: "pi-vcc",
-      // version 2 = refs are session-global (recall index space); version 1
-      // summaries carried window-relative refs (issue #28).
-      version: 2,
+      // version 3 adds factual-only sections and an opaque prior-summary record.
+      version: 3,
       sections: [...summary.matchAll(/^\[(.+?)\]/gm)].map((m) => m[1]),
       sourceMessageCount: agentMessages.length,
       previousSummaryUsed: Boolean(preparation.previousSummary),

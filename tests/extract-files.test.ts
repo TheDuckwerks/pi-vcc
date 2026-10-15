@@ -34,7 +34,7 @@ describe("extractFiles", () => {
 });
 
 describe("settings defaults", () => {
-  it("overrides pi core compaction by default", () => {
-    expect(DEFAULT_SETTINGS.overrideDefaultCompaction).toBe(true);
+  it("defaults ordinary compaction to Pi", () => {
+    expect(DEFAULT_SETTINGS.defaultCompactor).toBe("pi");
   });
 });

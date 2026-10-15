@@ -7,6 +7,7 @@ describe("buildSections", () => {
     const r = buildSections({ blocks: [] });
     expect(r.sessionGoal).toEqual([]);
     expect(r.outstandingContext).toEqual([]);
+    expect(r.userPreferences).toEqual([]);
     expect(r.briefTranscript).toBe("");
   });
 
@@ -20,19 +21,23 @@ describe("buildSections", () => {
       { kind: "assistant", text: "- run tests next" },
     ];
     const r = buildSections({ blocks });
-    expect(r.sessionGoal).toContain("Fix the auth bug");
+    expect(r.sessionGoal).toEqual([]);
+    expect(r.filesAndChanges).toContain('Read(auth.ts)');
+    expect(r.filesAndChanges).toContain('Edit(auth.ts)');
     expect(r.briefTranscript).toContain('[user]');
     expect(r.briefTranscript).toContain('* Read "auth.ts"');
     expect(r.briefTranscript).toContain('* Edit "auth.ts"');
   });
 
-  it("captures outstanding context from user and assistant text", () => {
+  it("does not infer goals, blockers or preferences from conversation text", () => {
     const blocks: NormalizedBlock[] = [
+      { kind: "user", text: "Fix auth; I prefer concise logs." },
       { kind: "assistant", text: "Tests are still failing after the retry." },
     ];
     const r = buildSections({ blocks });
-    expect(r.outstandingContext.length).toBeGreaterThan(0);
-    expect(r.outstandingContext[0]).toContain("Tests are still failing");
+    expect(r.sessionGoal).toEqual([]);
+    expect(r.outstandingContext).toEqual([]);
+    expect(r.userPreferences).toEqual([]);
   });
 
   it("brief transcript hides tool results", () => {

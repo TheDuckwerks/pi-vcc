@@ -16,55 +16,34 @@ describe("formatSummary", () => {
     expect(formatSummary(empty)).toBe("");
   });
 
-  it("formats a single header section", () => {
-    const data = {
-      ...empty,
-      sessionGoal: ["fix auth bug"],
-    };
-    const r = formatSummary(data);
-    expect(r).toContain("[Session Goal]");
-    expect(r).toContain("- fix auth bug");
+  it("labels file activity as observed tool calls, not confirmed changes", () => {
+    const r = formatSummary({ ...empty, filesAndChanges: ['- write(config.json) (#12)'] });
+    expect(r).toContain("[File Operations Observed]");
+    expect(r).toContain("write(config.json) (#12)");
+    expect(r).not.toContain("[Files And Changes]");
   });
 
-  it("separates header and brief transcript with ---", () => {
-    const data = {
-      ...empty,
-      sessionGoal: ["goal"],
-      briefTranscript: "[user]\ndo something",
-    };
-    const r = formatSummary(data);
-    expect(r).toContain("[Session Goal]");
+  it("omits inferred goal, blocker and preference sections", () => {
+    const r = formatSummary({ ...empty, sessionGoal: ["guess"], outstandingContext: ["maybe blocked"], userPreferences: ["inferred"] });
+    expect(r).not.toContain("Session Goal");
+    expect(r).not.toContain("Outstanding Context");
+    expect(r).not.toContain("User Preferences");
+  });
+
+  it("separates evidence and transcript with ---", () => {
+    const r = formatSummary({ ...empty, commits: ["abc123: landed (#9)"], briefTranscript: "[user]\ndo something" });
+    expect(r).toContain("[Commits]");
     expect(r).toContain("---");
     expect(r).toContain("[user]\ndo something");
   });
 
   it("renders brief transcript alone when no header sections", () => {
-    const data = {
-      ...empty,
-      briefTranscript: "[user]\nhi\n\n[assistant]\nhello",
-    };
-    const r = formatSummary(data);
+    const r = formatSummary({ ...empty, briefTranscript: "[user]\nhi\n\n[assistant]\nhello" });
     expect(r).toContain("[user]\nhi\n\n[assistant]\nhello");
   });
 
-  it("joins multiple header sections with blank line", () => {
-    const data = {
-      ...empty,
-      sessionGoal: ["goal"],
-      outstandingContext: ["blocker"],
-    };
-    const r = formatSummary(data);
-    expect(r).toContain("[Session Goal]");
-    expect(r).toContain("[Outstanding Context]");
-    expect(r).toContain("\n\n");
-  });
-
   it("wraps long lines so compaction TUI rendering stays bounded", () => {
-    const data = {
-      ...empty,
-      briefTranscript: `[assistant]\n${"word ".repeat(80)}`,
-    };
-    const r = formatSummary(data);
+    const r = formatSummary({ ...empty, briefTranscript: `[assistant]\n${"word ".repeat(80)}` });
     expect(Math.max(...r.split("\n").map((line) => line.length))).toBeLessThanOrEqual(120);
   });
 });

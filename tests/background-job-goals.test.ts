@@ -60,11 +60,13 @@ describe("background job notices are evidence, not goals", () => {
     expect(blocks).toEqual(original);
     for (const compiler of [compile, compileRanked]) {
       const first = compiler({ messages: [userMsg("Fix the login bug"), userMsg(notice)] });
-      expect(first.split("\n\n")[0]).toBe("[Session Goal]\n- Fix the login bug");
+      expect(first).not.toContain("[Session Goal]");
+      expect(first).toContain("[user]");
       expect(first).toContain("\nBackground job 7c310ff8e097 exited with code 0 after 6s.");
       expect(first).toContain("Full output: /org/runtime/cache/background-bash/job/output.log (#1)");
       const second = compiler({ previousSummary: first, messages: [userMsg("Continue the login fix")] });
-      expect(second.split("\n\n")[0]).toBe("[Session Goal]\n- Fix the login bug\n- Continue the login fix");
+      expect(second).not.toContain("[Session Goal]");
+      expect(second).toContain("Fix the login bug");
       expect(second).toContain("Background job 7c310ff8e097");
     }
   });

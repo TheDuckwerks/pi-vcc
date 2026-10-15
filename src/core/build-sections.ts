@@ -1,73 +1,36 @@
 import type { FileOps, NormalizedBlock } from "../types";
-import { clip, clipSentence, nonEmptyLines } from "./content";
 import type { SectionData } from "../sections";
-import { extractGoals } from "../extract/goals";
-import { extractFiles } from "../extract/files";
-import { extractPreferences, dedupPreferencesAgainstGoals } from "../extract/preferences";
 import { extractCommits, formatCommits } from "../extract/commits";
 import { extractProfileCommits } from "../extract/profile-commits";
 import type { RecognitionProfile } from "./recognition-profile";
 import { buildBriefSections, stringifyBrief } from "./brief";
+import { extractPath } from "./tool-args";
 
 export interface BuildSectionsInput {
   blocks: NormalizedBlock[];
   briefBlocks?: NormalizedBlock[];
-  /** Hook-provided file activity; authoritative for files touched before this compaction. */
   fileOps?: FileOps;
   recognitionProfile?: RecognitionProfile;
 }
 
-const BLOCKER_RE =
-  /\b(fail(ed|s|ure|ing)?|broken|cannot|can't|won't work|does not work|doesn't work|still (broken|failing|wrong)|blocked|blocker|not (fixed|resolved|working)|crash(es|ed|ing)?)\b/i;
-
-const extractOutstandingContext = (blocks: NormalizedBlock[]): string[] => {
-  const items: string[] = [];
-  const tail = blocks.slice(-20);
-
-  for (const b of tail) {
-    if (b.kind === "assistant" || b.kind === "user") {
-      for (const line of nonEmptyLines(b.text)) {
-        if (!BLOCKER_RE.test(line)) continue;
-        if (line.length < 15) continue;
-        // Skip continuation fragments (sub-bullets, parentheticals, dangling clauses)
-        if (/^\s*[-*+>]\s/.test(line)) continue;
-        if (/^\s*\(/.test(line)) continue;
-        // Require sentence-like start: capital letter, code identifier, or quote
-        if (!/^\s*["'`*_]?[A-Z`]/.test(line)) continue;
-        const clipped = b.kind === "user" ? `[user] ${clipSentence(line, 150)}` : clipSentence(line, 150);
-        if (!items.includes(clipped)) items.push(clipped);
-        break;
-      }
-    }
-  }
-
-  return items.slice(0, 5);
-};
-
-const formatFileActivity = (blocks: NormalizedBlock[], fileOps?: FileOps): string[] => {
-  const act = extractFiles(blocks, fileOps);
-  // Dedup: if already Modified, drop from Created (file existed before)
-  for (const p of act.modified) act.created.delete(p);
+const formatObservedFileCalls = (blocks: NormalizedBlock[]): string[] => {
+  const seen = new Set<string>();
   const lines: string[] = [];
-  const cap = (set: Set<string>, limit: number) => {
-    const arr = [...set];
-    if (arr.length <= limit) return arr.join(", ");
-    return arr.slice(0, limit).join(", ") + ` (+${arr.length - limit} more)`;
-  };
-  if (act.modified.size > 0) lines.push(`Modified: ${cap(act.modified, 10)}`);
-  if (act.created.size > 0) lines.push(`Created: ${cap(act.created, 10)}`);
-  if (act.read.size > 0) lines.push(`Read: ${cap(act.read, 10)}`);
+  for (const block of blocks) {
+    if (block.kind !== "tool_call") continue;
+    const path = extractPath(block.args);
+    if (!path) continue;
+    const line = `${block.name}(${path})${block.sourceIndex == null ? "" : ` (#${block.sourceIndex})`}`;
+    if (seen.has(line)) continue;
+    seen.add(line);
+    lines.push(line);
+  }
   return lines;
 };
 
 export const buildSections = (input: BuildSectionsInput): SectionData => {
-  const { blocks } = input;
+  const blocks = input.blocks;
   const briefSections = buildBriefSections(input.briefBlocks ?? blocks);
-  const sessionGoal = extractGoals(blocks);
-  const userPreferences = dedupPreferencesAgainstGoals(
-    extractPreferences(blocks),
-    sessionGoal,
-  );
   const seenCommits = new Set<string>();
   const commits = [...extractCommits(blocks), ...extractProfileCommits(blocks, input.recognitionProfile)]
     .sort((a, b) => (a.blockIndex ?? 0) - (b.blockIndex ?? 0))
@@ -78,11 +41,11 @@ export const buildSections = (input: BuildSectionsInput): SectionData => {
       return true;
     });
   return {
-    sessionGoal,
-    outstandingContext: extractOutstandingContext(blocks),
-    filesAndChanges: formatFileActivity(blocks, input.fileOps),
+    sessionGoal: [],
+    outstandingContext: [],
+    filesAndChanges: formatObservedFileCalls(blocks),
     commits: formatCommits(commits),
-    userPreferences,
+    userPreferences: [],
     briefTranscript: stringifyBrief(briefSections),
   };
 };

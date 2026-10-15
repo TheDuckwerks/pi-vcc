@@ -20,7 +20,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const run = (profilePath?: string, previousSummary?: string, prepare?: (entries: any[]) => any, provideGoal?: (request: any) => void) => {
+const run = (profilePath?: string, previousSummary?: string, prepare?: (entries: any[]) => any, provideGoal?: (request: any) => void, previousDetails: Record<string, unknown> = { compactor: "pi-vcc", version: 3 }) => {
   writeFileSync(process.env.PI_VCC_CONFIG_PATH!, JSON.stringify({
     debug: false, smartKeepTail: false, overrideDefaultCompaction: true,
     ...(profilePath ? { recognitionProfilePath: profilePath } : {}),
@@ -32,10 +32,15 @@ const run = (profilePath?: string, previousSummary?: string, prepare?: (entries:
     { type: "message", id: "u2", message: { role: "user", content: "Review the result", timestamp: 0 } },
     { type: "message", id: "a2", message: { role: "assistant", content: [{ type: "text", text: "Reviewing." }], timestamp: 0 } },
   ].map((entry, i, all) => ({ ...entry, parentId: all[i - 1]?.id ?? null }));
+  const branchEntries = previousSummary ? [
+    { type: "compaction", id: "prior-compaction", parentId: null, firstKeptEntryId: "u1", summary: previousSummary,
+      details: previousDetails },
+    ...entries.map((entry, i) => ({ ...entry, parentId: i ? entries[i - 1].id : "prior-compaction" })),
+  ] : entries;
   // Abandoned entries count globally but are not in the summarized lineage.
   const all = [
     ...Array.from({ length: 122 }, (_, i) => ({ type: "message", id: `abandoned${i}`, message: { role: "user", content: "Other branch" } })),
-    { type: "custom", id: "metadata", data: {} }, ...entries,
+    { type: "custom", id: "metadata", data: {} }, ...branchEntries,
   ];
   let handler: any;
   registerBeforeCompactHook({
@@ -45,7 +50,7 @@ const run = (profilePath?: string, previousSummary?: string, prepare?: (entries:
   const notifications: string[] = [];
   const ctx = { ui: { notify: (message: string) => notifications.push(message) }, sessionManager: { getEntries: () => all } };
   const response = handler({
-    branchEntries: entries, customInstructions: `${PI_VCC_COMPACT_INSTRUCTION} keep:1`, reason: "manual",
+    branchEntries, customInstructions: `${PI_VCC_COMPACT_INSTRUCTION} keep:1`, reason: "manual",
     preparation: prepare?.(entries) ?? { previousSummary, fileOps: { read: [], written: [], edited: [] }, tokensBefore: 2000 },
   }, ctx);
   return { response, notifications };
@@ -65,6 +70,7 @@ describe("profile reaches the real compaction hook", () => {
     expect(config.recognitionProfilePath).toBe("");
     expect(commands).toContain("pi-vcc");
     expect(commands).toContain("pi-vcc-recall");
+    expect(commands).toContain("compactor");
     expect(tools).toContain("vcc_recall");
     expect(events).toContain("session_before_compact");
   });
@@ -81,7 +87,12 @@ describe("profile reaches the real compaction hook", () => {
     expect(summary).toContain("42e3557: Specify the subagent recipe pilot ref #134 (#124)");
     expect(summary).toContain("(#123)");
     expect(summary).toContain("Make the approved changes (#122)");
-    expect(summary.split("\n\n---\n\n")[1]).toBe(off.response.compaction.summary.split("\n\n---\n\n")[1]);
+    const summaryText = (summary: string) => {
+      const start = summary.indexOf("[user]");
+      const end = summary.lastIndexOf("Use `vcc_recall`");
+      return summary.slice(start, end < 0 ? undefined : end).trim();
+    };
+    expect(summaryText(on.response.compaction.summary)).toBe(summaryText(off.response.compaction.summary));
     expect(on.notifications).toEqual([]);
   });
 
@@ -117,6 +128,17 @@ describe("profile reaches the real compaction hook", () => {
     const cleared = run(undefined, changed).response.compaction.summary;
     expect(cleared).not.toContain("Revised goal");
     expect(cleared).not.toContain("[Active work goal]");
+  });
+
+  test("Pi compaction summary stays opaque when switching to VCC", () => {
+    const previous = "[Session Goal]\\n- Inferred old goal\\n\\n---\\n\\n[user]\\nOriginal request";
+    const summary = run(undefined, previous, undefined, undefined, { compactor: "pi", version: 1 }).response.compaction.summary;
+    const opaqueAt = summary.indexOf("[Prior compaction summary (unverified)]");
+    expect(opaqueAt).toBeGreaterThan(0);
+    expect(summary.slice(opaqueAt)).toContain("[Session Goal]\\n- Inferred old goal");
+    expect(summary.slice(opaqueAt)).toContain("[user]\\nOriginal request");
+    expect(summary.slice(0, opaqueAt)).not.toContain("[Session Goal]");
+    expect(summary.slice(0, opaqueAt)).toContain("Make the approved changes");
   });
 
   test("malformed and missing sidecars warn and preserve built-in compaction", () => {

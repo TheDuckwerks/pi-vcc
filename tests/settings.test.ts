@@ -69,12 +69,21 @@ describe("VCC runtime paths", () => {
     scaffoldSettings();
     const config = JSON.parse(readFileSync(configPath(), "utf8"));
     expect(config.overrideDefaultCompaction).toBe(false);
+    expect(config.defaultCompactor).toBe("pi");
     expect(config.skipForProviders).toEqual(["xai"]);
     expect(config.custom).toBe("retained");
     expect(config.recognitionProfilePath).toBe("");
     const before = readFileSync(configPath(), "utf8");
     scaffoldSettings();
     expect(readFileSync(configPath(), "utf8")).toBe(before);
+  });
+
+  test("scaffolding migrates the legacy VCC default", () => {
+    mkdirSync(dirname(configPath()), { recursive: true });
+    writeFileSync(configPath(), JSON.stringify({ overrideDefaultCompaction: true }));
+    scaffoldSettings();
+    expect(JSON.parse(readFileSync(configPath(), "utf8")).defaultCompactor).toBe("vcc");
+    expect(loadSettings().defaultCompactor).toBe("vcc");
   });
 
   test("malformed config is preserved, and loading falls back without rewriting it", () => {

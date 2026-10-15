@@ -3,6 +3,7 @@ import { scaffoldSettings } from "./src/core/settings";
 import { registerBeforeCompactHook } from "./src/hooks/before-compact";
 import { registerPiVccCommand } from "./src/commands/pi-vcc";
 import { registerVccRecallCommand } from "./src/commands/vcc-recall";
+import { registerCompactorCommand } from "./src/core/compactor-policy";
 import { registerRecallTool } from "./src/tools/recall";
 
 export default (pi: ExtensionAPI) => {
@@ -10,5 +11,6 @@ export default (pi: ExtensionAPI) => {
   registerBeforeCompactHook(pi);
   registerPiVccCommand(pi);
   registerVccRecallCommand(pi);
+  registerCompactorCommand(pi);
   registerRecallTool(pi);
 };

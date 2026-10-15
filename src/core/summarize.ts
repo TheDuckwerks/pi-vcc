@@ -24,7 +24,7 @@ export interface RankedCompileInput extends CompileInput {
   ranking?: BriefRankingOptions;
 }
 
-const HEADER_NAMES = ["Session Goal", "Files And Changes", "Commits", "Outstanding Context", "User Preferences"];
+const HEADER_NAMES = ["File Operations Observed", "Commits", "Prior compaction summary (unverified)"];
 
 const SEPARATOR = "\n\n---\n\n";
 
@@ -48,14 +48,18 @@ const sectionOf = (text: string, header: string): string => {
 /** Extract the brief transcript part (everything after ---) */
 const briefOf = (text: string): string => {
   const idx = text.indexOf(SEPARATOR);
-  if (idx < 0) return "";
-  return text.slice(idx + SEPARATOR.length).trim();
+  return idx < 0 ? text.trim() : text.slice(idx + SEPARATOR.length).trim();
 };
 
 /** Merge a header section */
 const mergeHeaderSection = (header: string, prev: string, fresh: string): string => {
-  // Outstanding Context is volatile -- always use fresh only
-  if (header === "Outstanding Context") return fresh;
+  if (header === "Prior compaction summary (unverified)") return prev || fresh;
+  if (header === "File Operations Observed") {
+    const seen = new Set<string>();
+    const lines = [...prev.split("\n"), ...fresh.split("\n")]
+      .filter((line) => line.startsWith("- ") && !seen.has(line) && Boolean(seen.add(line)));
+    return lines.length ? `[${header}]\n${lines.slice(-40).join("\n")}` : "";
+  }
   if (!prev) return fresh;
   if (!fresh) return prev;
 
@@ -64,7 +68,6 @@ const mergeHeaderSection = (header: string, prev: string, fresh: string): string
     return mergeFileLines(prev, fresh);
   }
 
-  // Session Goal, User Preferences: line-level dedup, cap
   const isClean = (l: string) => l.startsWith("- ") && !l.includes("<skill") && !l.includes("</skill");
   const prevLines = prev.split("\n").filter(isClean);
   const freshLines = fresh.split("\n").filter(isClean);
@@ -77,7 +80,7 @@ const mergeHeaderSection = (header: string, prev: string, fresh: string): string
     seen.add(key);
     return true;
   });
-  const CAP = header === "Session Goal" ? 8 : header === "Commits" ? 8 : 15;
+  const CAP = header === "Commits" ? 8 : 15;
   const capped = combined.length > CAP ? combined.slice(-CAP) : combined;
   if (capped.length === 0) return "";
   return `[${header}]\n${capped.join("\n")}`;
@@ -215,9 +218,6 @@ export const compileRanked = (input: RankedCompileInput): string =>
   });
 
 const stripRecallNote = (text: string): string => {
-  // Remove trailing RECALL_NOTE (and any separators surrounding it) if present.
-  // Handles both current format (---\n\nNOTE) and bare trailing NOTE.
-  const idx = text.lastIndexOf(RECALL_NOTE);
-  if (idx < 0) return text;
-  return text.slice(0, idx).replace(/\s*(?:\n\n---\n\n)?\s*$/, "").trimEnd();
+  const escaped = RECALL_NOTE.split(/\s+/).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
+  return text.replace(new RegExp(`\\s*(?:\\n\\n---\\n\\n)?${escaped}\\s*$`), "").trimEnd();
 };

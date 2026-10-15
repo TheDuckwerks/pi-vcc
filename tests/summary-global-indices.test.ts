@@ -39,7 +39,7 @@ afterAll(() => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
-beforeEach(() => setConfig({ debug: false, overrideDefaultCompaction: false }));
+beforeEach(() => setConfig({ debug: false, defaultCompactor: "vcc" }));
 afterEach(() => {
   if (existsSync(CONFIG_PATH)) unlinkSync(CONFIG_PATH);
 });
@@ -230,7 +230,7 @@ describe("before-compact hook emits session-global refs", () => {
       previousSummary: "[Session Goal]\n- Inspect the alpha fixture",
     });
     expect(result.compaction).toBeDefined();
-    expect(result.compaction.details.version).toBe(2);
+    expect(result.compaction.details.version).toBe(3);
     expect(result.compaction.summary).toContain('* edit "beta.txt" (#4)');
     expect(result.compaction.summary).not.toContain('* edit "beta.txt" (#1)');
   });
@@ -279,14 +279,14 @@ describe("before-compact hook emits session-global refs", () => {
     const all = [
       msgEntry("m1", userMsg("Run the edits")),
       msgEntry("m2", dupEdit),
-      // Second identical edit shares id "dup" with a later entry → ambiguous
-      // → dropped fail-closed → its brief line renders no ref.
+      // The active branch contains one `dup`; another lineage reuses that ID,
+      // so the session-global source map must omit its ambiguous reference.
       msgEntry("dup", dupEdit),
       msgEntry("m3", toolResult("edit", "done")),
       msgEntry("dup", toolResult("read", "later dup")),
     ];
     const { invoke } = hookHarness(all);
-    const result = invoke(all);
+    const result = invoke(all.slice(0, 4));
     expect(result.compaction).toBeDefined();
     const summary: string = result.compaction.summary;
     expect(summary).toContain('* edit "a.ts" (#1)');
