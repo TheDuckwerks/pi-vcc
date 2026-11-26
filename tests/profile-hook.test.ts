@@ -20,7 +20,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const run = (profilePath?: string, previousSummary?: string, prepare?: (entries: any[]) => any, provideGoal?: (request: any) => void, previousDetails: Record<string, unknown> = { compactor: "pi-vcc", version: 3 }) => {
+const run = (profilePath?: string, previousSummary?: string, prepare?: (entries: any[]) => any, _unused?: unknown, previousDetails: Record<string, unknown> = { compactor: "pi-vcc", version: 3 }) => {
   writeFileSync(process.env.PI_VCC_CONFIG_PATH!, JSON.stringify({
     debug: false, smartKeepTail: false, overrideDefaultCompaction: true,
     ...(profilePath ? { recognitionProfilePath: profilePath } : {}),
@@ -45,7 +45,6 @@ const run = (profilePath?: string, previousSummary?: string, prepare?: (entries:
   let handler: any;
   registerBeforeCompactHook({
     on(name: string, h: any) { if (name === "session_before_compact") handler = h; },
-    events: { emit(name: string, request: any) { if (name === "duckwerks:nest-goal") provideGoal?.(request); } },
   } as any);
   const notifications: string[] = [];
   const ctx = { ui: { notify: (message: string) => notifications.push(message) }, sessionManager: { getEntries: () => all } };
@@ -109,24 +108,6 @@ describe("profile reaches the real compaction hook", () => {
     });
     expect(response.compaction.summary).toContain("b17ba20:");
     expect(response.compaction.summary).toContain("42e3557:");
-  });
-
-  test("real compaction consumes the Nest provider and does not revive a cleared snapshot", () => {
-    let requested = false;
-    const first = run(undefined, undefined, undefined, request => {
-      requested = true;
-      expect(request.entries.some((e: any) => e.id === "u1")).toBe(true);
-      request.reply({ entryId: "nest", text: "The Nest-owned goal" });
-    }).response.compaction.summary;
-    expect(requested).toBe(true);
-    expect(first).toStartWith("[Active work goal]");
-    expect(first).toContain("The Nest-owned goal");
-    const changed = run(undefined, first, undefined, request => request.reply({ entryId: "new", text: "Revised goal" })).response.compaction.summary;
-    expect(changed).toContain("Revised goal");
-    expect(changed).not.toContain("The Nest-owned goal");
-    const cleared = run(undefined, changed).response.compaction.summary;
-    expect(cleared).not.toContain("Revised goal");
-    expect(cleared).not.toContain("[Active work goal]");
   });
 
   test("malformed and missing sidecars warn and preserve built-in compaction", () => {

@@ -1,14 +1,12 @@
 # pi-vcc
 
-> **Duckwerks fork.** Upstream [sting8k/pi-vcc](https://github.com/sting8k/pi-vcc) **v0.12.1** plus three
-> Duckwerks additions, each one commit. The npm badge and install lines below are upstream's; this fork
+> **Duckwerks fork.** Upstream [sting8k/pi-vcc](https://github.com/sting8k/pi-vcc) **v0.12.1** plus two
+> Duckwerks additions. The npm badge and install lines below are upstream's; this fork
 > is installed as `git:github.com/TheDuckwerks/pi-vcc` and is not published.
 >
 > - **Compactor per provider or model.** `compactorsByProvider` and `compactorsByModel` (case-insensitive
 >   `provider` or `provider/model-id` to `"pi"` or `"vcc"`) override `overrideDefaultCompaction` and
 >   `skipForProviders` in either direction. Explicit `/pi-vcc` still wins.
-> - **Nest work goal.** During compaction VCC emits `duckwerks:nest-goal`; a valid reply becomes a leading
->   `[Active work goal]` line, re-read each time and never merged forward.
 > - **Receipt-backed commits from a sidecar.** `recognitionProfilePath` names an absolute JSON file of
 >   extra commit commands (`examples/duckwerks-recognition.json`: `quack commit`). A match counts only
 >   when its own tool result carries a Git commit header; those commits join `[Commits]`. Batches the
