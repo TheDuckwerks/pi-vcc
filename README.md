@@ -1,5 +1,22 @@
 # pi-vcc
 
+> **Duckwerks fork.** Upstream [sting8k/pi-vcc](https://github.com/sting8k/pi-vcc) **v0.12.1** plus three
+> Duckwerks additions, each one commit. The npm badge and install lines below are upstream's; this fork
+> is installed as `git:github.com/TheDuckwerks/pi-vcc` and is not published.
+>
+> - **Compactor per provider or model.** `compactorsByProvider` and `compactorsByModel` (case-insensitive
+>   `provider` or `provider/model-id` to `"pi"` or `"vcc"`) override `overrideDefaultCompaction` and
+>   `skipForProviders` in either direction. Explicit `/pi-vcc` still wins.
+> - **Nest work goal.** During compaction VCC emits `duckwerks:nest-goal`; a valid reply becomes a leading
+>   `[Active work goal]` line, re-read each time and never merged forward.
+> - **Receipt-backed commits from a sidecar.** `recognitionProfilePath` names an absolute JSON file of
+>   extra commit commands (`examples/duckwerks-recognition.json`: `quack commit`). A match counts only
+>   when its own tool result carries a Git commit header; those commits join `[Commits]`. Version 1,
+>   at most 16 rules, 64 KiB, literal argv prefixes only. Without it the summary is exactly upstream's.
+>
+> The pre-v0.12 fork (v0.8.1 base) is tagged `duckwerks-v0.8.1-final`. Run the suite as in `AGENTS.md`,
+> with `HOME`, `TMPDIR` and `PI_CODING_AGENT_DIR` pointed at ignored dirs under `node_modules/`.
+
 [![npm](https://img.shields.io/npm/v/@sting8k/pi-vcc)](https://www.npmjs.com/package/@sting8k/pi-vcc)
 
 Algorithmic conversation compactor for [Pi](https://github.com/badlogic/pi-mono). No LLM calls: it builds the summary by extraction and formatting.
