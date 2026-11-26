@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import type { Compactor } from "./compactor-policy";
 
 export const SETTINGS_PATH_DEFAULT = join(getAgentDir(), "pi-vcc-config.json");
 const settingsPath = (): string => process.env.PI_VCC_CONFIG_PATH ?? SETTINGS_PATH_DEFAULT;
@@ -71,6 +72,10 @@ export interface PiVccSettings {
    * Empty by default (feature off).
    */
   trackCommands: string[];
+  /** Duckwerks: case-insensitive provider id -> compactor, over overrideDefaultCompaction. */
+  compactorsByProvider: Record<string, Compactor>;
+  /** Duckwerks: case-insensitive `provider/model-id` -> compactor; wins over the provider map. */
+  compactorsByModel: Record<string, Compactor>;
 }
 
 export const DEFAULT_SETTINGS: PiVccSettings = {
@@ -82,6 +87,8 @@ export const DEFAULT_SETTINGS: PiVccSettings = {
   skipForProviders: [],
   skipCustomTypes: [],
   trackCommands: [],
+  compactorsByProvider: {},
+  compactorsByModel: {},
 };
 
 const readJson = (path: string): Record<string, unknown> | null => {
@@ -96,6 +103,11 @@ const readJson = (path: string): Record<string, unknown> | null => {
 const coerceStringArray = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
+const coerceCompactorMap = (value: unknown): Record<string, Compactor> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).filter((entry): entry is [string, Compactor] => entry[1] === "pi" || entry[1] === "vcc"))
+    : {};
+
 export function loadSettings(): PiVccSettings {
   const parsed = readJson(settingsPath());
   if (!parsed || typeof parsed !== "object") return { ...DEFAULT_SETTINGS };
@@ -108,6 +120,8 @@ export function loadSettings(): PiVccSettings {
   merged.trackCommands = [
     ...new Set(coerceStringArray(parsed.trackCommands).map((s) => s.trim()).filter(Boolean)),
   ];
+  merged.compactorsByProvider = coerceCompactorMap(parsed.compactorsByProvider);
+  merged.compactorsByModel = coerceCompactorMap(parsed.compactorsByModel);
   return merged;
 }
 

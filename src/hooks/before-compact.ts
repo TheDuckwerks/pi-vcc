@@ -7,6 +7,7 @@ import { normalize } from "../core/normalize";
 import { getSessionGlobalIndexById } from "../core/global-indices";
 import { isSkippedCustom, toLiveMessage, toLlmSafe, toSummaryMessage } from "../core/summary-messages";
 import { parseKeepAndPrompt, PI_VCC_COMPACT_INSTRUCTION } from "../core/compact-args";
+import { selectCompactor } from "../core/compactor-policy";
 import { loadSettings, type PiVccSettings } from "../core/settings";
 import { calibrateCharsPerToken, estimateMessageContentChars, estimateMessageContentTokens, estimateTokensFromChars } from "../core/token-estimate";
 import type { PiVccCompactionDetails } from "../details";
@@ -572,14 +573,8 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI, piVersion: string = 
     // Otherwise, only handle when user opted in via settings.
     const { isPiVcc, keepUserTurns, keepUserTurnsExplicit, followUpPrompt } = parseCompactionInstructions(customInstructions);
     pendingFollowUpPrompt = null;
-    if (!isPiVcc && !settings.overrideDefaultCompaction) return;
-    // Provider-level opt-out (#27): defer to the provider's own compaction
-    // (e.g. remote compaction via pi-codex-compaction). Checked at call time
-    // because the model can change mid-session via /model. Explicit /pi-vcc
-    // bypasses the skip; undefined model never skips.
-    const provider = (ctx as any)?.model?.provider;
-    if (!isPiVcc && typeof provider === "string" &&
-        settings.skipForProviders.some((p) => p.toLowerCase() === provider.toLowerCase())) return;
+    // Duckwerks: per-provider/model choice over upstream's switch and opt-out list.
+    if (selectCompactor(settings, (ctx as any)?.model, isPiVcc).compactor !== "vcc") return;
 
     const calibrationCut = buildOwnCut(branchEntries as any[], 0);
     const calibrationMessageChars = calibrationCut.ok

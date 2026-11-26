@@ -1178,3 +1178,47 @@ describe("registerBeforeCompactHook: trackCommands", () => {
     expect(summaryWith({})).not.toContain("[Tracked Commands]");
   });
 });
+
+// Duckwerks addition: per-provider/model compactor maps over upstream's switch.
+describe("registerBeforeCompactHook: compactorsByProvider / compactorsByModel (Duckwerks)", () => {
+  afterEach(() => {
+    if (existsSync(CONFIG_PATH)) unlinkSync(CONFIG_PATH);
+  });
+
+  const entries = () => [msg("m1", "user"), msg("m2", "assistant"), msg("m3", "user"), msg("m4", "assistant")];
+  const run = (config: Record<string, unknown>, model: Record<string, unknown> | undefined) => {
+    setConfig({ debug: false, ...config });
+    const mock = createMockPi();
+    mock.ctx.model = model;
+    registerBeforeCompactHook(mock.pi);
+    return mock.invokeBefore(makeEvent(entries(), undefined, { reason: "threshold" }))?.compaction;
+  };
+
+  test("a provider mapped to vcc compacts while the default leaves the rest to Pi", () => {
+    const config = { overrideDefaultCompaction: false, compactorsByProvider: { "MCA-Local": "vcc" } };
+    expect(run(config, { provider: "mca-local", id: "x" })).toBeTruthy();
+    expect(run(config, { provider: "anthropic", id: "claude" })).toBeUndefined();
+    expect(run(config, undefined)).toBeUndefined();
+  });
+
+  test("a provider mapped to pi defers even with the override on, and a model entry beats its provider", () => {
+    expect(run({ overrideDefaultCompaction: true, compactorsByProvider: { openai: "pi" } }, { provider: "openai", id: "gpt" })).toBeUndefined();
+    const config = { overrideDefaultCompaction: false, compactorsByProvider: { openai: "pi" }, compactorsByModel: { "openai/gpt-mini": "vcc" } };
+    expect(run(config, { provider: "openai", id: "gpt-mini" })).toBeTruthy();
+    expect(run(config, { provider: "openai", id: "gpt" })).toBeUndefined();
+  });
+
+  test("maps beat skipForProviders; malformed map values are ignored", () => {
+    expect(run({ overrideDefaultCompaction: true, skipForProviders: ["mca-local"], compactorsByProvider: { "mca-local": "vcc" } }, { provider: "mca-local" })).toBeTruthy();
+    expect(run({ overrideDefaultCompaction: false, compactorsByProvider: { "mca-local": "yes" } }, { provider: "mca-local" })).toBeUndefined();
+    expect(run({ overrideDefaultCompaction: false, compactorsByProvider: ["mca-local"] }, { provider: "mca-local" })).toBeUndefined();
+  });
+
+  test("explicit /pi-vcc still wins over a pi mapping", () => {
+    setConfig({ debug: false, overrideDefaultCompaction: false, compactorsByProvider: { openai: "pi" } });
+    const mock = createMockPi();
+    mock.ctx.model = { provider: "openai" };
+    registerBeforeCompactHook(mock.pi);
+    expect(mock.invokeBefore(makeEvent(entries(), PI_VCC_COMPACT_INSTRUCTION))?.compaction).toBeTruthy();
+  });
+});
