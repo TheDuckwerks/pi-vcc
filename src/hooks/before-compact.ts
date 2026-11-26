@@ -9,6 +9,7 @@ import { isSkippedCustom, toLiveMessage, toLlmSafe, toSummaryMessage } from "../
 import { parseKeepAndPrompt, PI_VCC_COMPACT_INSTRUCTION } from "../core/compact-args";
 import { selectCompactor } from "../core/compactor-policy";
 import { requestNestGoal, stripGoalSnapshot, withNestGoal } from "../core/goal-reference";
+import { loadRecognitionProfile } from "../core/recognition-profile";
 import { loadSettings, type PiVccSettings } from "../core/settings";
 import { calibrateCharsPerToken, estimateMessageContentChars, estimateMessageContentTokens, estimateTokensFromChars } from "../core/token-estimate";
 import type { PiVccCompactionDetails } from "../details";
@@ -754,8 +755,14 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI, piVersion: string = 
     const RANKED_BRIEF_BUDGET_TOKENS = 1100;
     const RANKED_BRIEF_CEILING_TOKENS = 2000;
     const RANKED_BRIEF_TOKENS_PER_BLOCK = 15;
+    // Duckwerks: the recognition sidecar is read on each compaction; problems warn and fall back.
+    const recognition = loadRecognitionProfile(settings.recognitionProfilePath);
+    if (recognition.diagnostic) {
+      try { ctx?.ui?.notify?.(recognition.diagnostic, "warning"); } catch {}
+    }
     const summaryCore = compileRanked({
       messages,
+      recognitionProfile: recognition.profile,
       sourceIndices,
       // Duckwerks: the goal line is re-read from Nest each time, never merged.
       previousSummary: typeof preparation.previousSummary === "string"

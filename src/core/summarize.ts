@@ -7,6 +7,7 @@ import { keepNewestUserMessages } from "../extract/user-messages";
 import { formatSummary, capBrief, capItems, stripCapMarker, BRIEF_MAX_LINES, FILES_PER_CATEGORY, RECALL_NOTE, wrapLongLines } from "./format";
 import { COMMAND_SEPARATOR, COMMANDS_PER_NAME } from "../extract/tracked-commands";
 import { selectRankedBriefBlocks, type BriefRankingOptions } from "./rank";
+import type { RecognitionProfile } from "./recognition-profile";
 
 export interface CompileInput {
   messages: Message[];
@@ -22,6 +23,8 @@ export interface CompileInput {
    * empty/omitted by default, threaded through from
    * PiVccSettings.trackCommands by the caller (hooks/before-compact.ts). */
   trackCommands?: readonly string[];
+  /** Duckwerks: see BuildSectionsInput.recognitionProfile. */
+  recognitionProfile?: RecognitionProfile;
 }
 
 export interface RankedCompileInput extends CompileInput {
@@ -282,7 +285,7 @@ const compileWithBriefBlocks = (input: CompileInput, options: CompileWithBriefBl
   const prev = input.previousSummary
     ? stripRecallNote(input.previousSummary)
     : undefined;
-  const data = buildSections({ blocks, briefBlocks, fileOps: input.fileOps, trackCommands: input.trackCommands });
+  const data = buildSections({ blocks, briefBlocks, fileOps: input.fileOps, trackCommands: input.trackCommands, recognitionProfile: input.recognitionProfile });
   const fresh = formatSummary(data, { capBriefTranscript: options.capFreshBrief ?? true });
   const merged = prev ? mergePrevious(prev, fresh, { preserveFreshBrief: options.preserveFreshBriefOnMerge }) : fresh;
   if (!merged) return "";

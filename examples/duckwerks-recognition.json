@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "commitCommands": [
+    {
+      "id": "duckwerks.quack-commit",
+      "tool": "bash",
+      "argvPrefix": ["quack", "commit"]
+    }
+  ]
+}

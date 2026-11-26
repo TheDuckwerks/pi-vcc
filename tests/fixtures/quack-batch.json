@@ -1,0 +1,30 @@
+{
+  "provenance": "De-identified command/result shape from Gator session 2026-09-27, entries 0ed3102a and 8ccf514c. Repo paths and call ID replaced; receipt hashes and subjects unchanged.",
+  "sourceIndices": [123, 124],
+  "messages": [
+    {
+      "role": "assistant",
+      "content": [{
+        "type": "toolCall",
+        "id": "quack-batch",
+        "name": "bash",
+        "arguments": {
+          "command": "git -C /workspace/config add .gitignore pi/README.md pi/subagent-audit-schema.md skills/subagent-recipes/SKILL.md && (cd /workspace/config && quack commit .subagent-recipes-commit) && git -C /workspace/gator add gator-corpus.md specs/2026-09-27-subagent-recipes-and-audit.md && (cd /workspace/gator && quack commit .subagent-recipes-commit) && rm /workspace/config/.subagent-recipes-commit /workspace/gator/.subagent-recipes-commit && git -C /workspace/config status --short --branch && git -C /workspace/gator status --short --branch",
+          "timeout": 20
+        }
+      }],
+      "timestamp": 0
+    },
+    {
+      "role": "toolResult",
+      "toolCallId": "quack-batch",
+      "toolName": "bash",
+      "content": [{
+        "type": "text",
+        "text": "[main b17ba20] Add on-demand subagent recipes and audit schema ref #134\n 4 files changed, 96 insertions(+), 6 deletions(-)\n create mode 100644 pi/subagent-audit-schema.md\n create mode 100644 skills/subagent-recipes/SKILL.md\n[main 42e3557] Specify the subagent recipe pilot ref #134\n 2 files changed, 49 insertions(+), 3 deletions(-)\n create mode 100644 specs/2026-09-27-subagent-recipes-and-audit.md\n## main...origin/main [ahead 1]\n## main...origin/main [ahead 1]\n"
+      }],
+      "isError": false,
+      "timestamp": 0
+    }
+  ]
+}

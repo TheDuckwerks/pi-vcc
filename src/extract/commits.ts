@@ -1,8 +1,12 @@
 import type { NormalizedBlock } from "../types";
+import { setCommitPosition } from "../core/duckwerks-meta";
 
-interface CommitInfo {
+export interface CommitInfo {
   hash?: string;
   message: string;
+  /** Duckwerks: set on receipt-backed commits; built-in ones keep theirs in duckwerks-meta. */
+  blockIndex?: number;
+  sourceIndex?: number;
 }
 
 const COMMIT_MSG_RE = /git\s+commit[^\n]*?\s-[A-Za-z]*m\s+(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|\$?'((?:[^'\\]|\\.)*)')/;
@@ -128,7 +132,7 @@ export const extractCommits = (blocks: NormalizedBlock[]): CommitInfo[] => {
 
       // One entry per commit: the same message seen hashless (`-q` prints no hash) and hashed is one commit, keep the hashed.
       const dup = commits.find((c) => c.message === message && (!c.hash || !hash || c.hash === hash));
-      if (!dup) commits.push({ hash, message });
+      if (!dup) commits.push(setCommitPosition({ hash, message }, i));
       else if (hash && !dup.hash) dup.hash = hash;
     }
   }

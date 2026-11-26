@@ -76,6 +76,8 @@ export interface PiVccSettings {
   compactorsByProvider: Record<string, Compactor>;
   /** Duckwerks: case-insensitive `provider/model-id` -> compactor; wins over the provider map. */
   compactorsByModel: Record<string, Compactor>;
+  /** Duckwerks: absolute path to a recognition sidecar (extra commit commands). Empty = off. */
+  recognitionProfilePath: string;
 }
 
 export const DEFAULT_SETTINGS: PiVccSettings = {
@@ -89,6 +91,7 @@ export const DEFAULT_SETTINGS: PiVccSettings = {
   trackCommands: [],
   compactorsByProvider: {},
   compactorsByModel: {},
+  recognitionProfilePath: "",
 };
 
 const readJson = (path: string): Record<string, unknown> | null => {
@@ -122,6 +125,7 @@ export function loadSettings(): PiVccSettings {
   ];
   merged.compactorsByProvider = coerceCompactorMap(parsed.compactorsByProvider);
   merged.compactorsByModel = coerceCompactorMap(parsed.compactorsByModel);
+  merged.recognitionProfilePath = typeof parsed.recognitionProfilePath === "string" ? parsed.recognitionProfilePath : "";
   return merged;
 }
 

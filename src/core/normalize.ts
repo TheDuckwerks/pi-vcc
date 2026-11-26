@@ -1,4 +1,5 @@
 import type { SessionMessageEntry } from "@earendil-works/pi-coding-agent";
+import { setToolCallId } from "./duckwerks-meta";
 import type { NormalizedBlock } from "../types";
 import { textOf } from "./content";
 import { sanitize } from "./sanitize";
@@ -27,12 +28,12 @@ const normalizeOne = (msg: SessionMessageEntry["message"], msgIndex: number | un
   }
 
   if (msg.role === "toolResult") {
-    return [{
+    return [setToolCallId({
       kind: "tool_result",
       name: msg.toolName,
       text: sanitize(textOf(msg.content)),
       sourceIndex: msgIndex,
-    }];
+    }, msg.toolCallId)];
   }
 
   if (msg.role === "assistant") {
@@ -46,12 +47,12 @@ const normalizeOne = (msg: SessionMessageEntry["message"], msgIndex: number | un
       if (part.type === "text") {
         blocks.push({ kind: "assistant", text: sanitize(part.text), sourceIndex: msgIndex });
       } else if (part.type === "toolCall") {
-        blocks.push({
+        blocks.push(setToolCallId({
           kind: "tool_call",
           name: part.name,
           args: part.arguments,
           sourceIndex: msgIndex,
-        });
+        }, part.id));
       }
     }
     return blocks;
