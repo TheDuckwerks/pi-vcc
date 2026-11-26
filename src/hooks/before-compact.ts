@@ -8,6 +8,7 @@ import { getSessionGlobalIndexById } from "../core/global-indices";
 import { isSkippedCustom, toLiveMessage, toLlmSafe, toSummaryMessage } from "../core/summary-messages";
 import { parseKeepAndPrompt, PI_VCC_COMPACT_INSTRUCTION } from "../core/compact-args";
 import { selectCompactor } from "../core/compactor-policy";
+import { requestNestGoal, stripGoalSnapshot, withNestGoal } from "../core/goal-reference";
 import { loadSettings, type PiVccSettings } from "../core/settings";
 import { calibrateCharsPerToken, estimateMessageContentChars, estimateMessageContentTokens, estimateTokensFromChars } from "../core/token-estimate";
 import type { PiVccCompactionDetails } from "../details";
@@ -753,10 +754,13 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI, piVersion: string = 
     const RANKED_BRIEF_BUDGET_TOKENS = 1100;
     const RANKED_BRIEF_CEILING_TOKENS = 2000;
     const RANKED_BRIEF_TOKENS_PER_BLOCK = 15;
-    const summary = compileRanked({
+    const summaryCore = compileRanked({
       messages,
       sourceIndices,
-      previousSummary: preparation.previousSummary,
+      // Duckwerks: the goal line is re-read from Nest each time, never merged.
+      previousSummary: typeof preparation.previousSummary === "string"
+        ? stripGoalSnapshot(preparation.previousSummary)
+        : preparation.previousSummary,
       fileOps: {
         readFiles: [...preparation.fileOps.read],
         modifiedFiles: [...preparation.fileOps.written, ...preparation.fileOps.edited],
@@ -768,6 +772,8 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI, piVersion: string = 
         briefCharsPerBlock: Math.round(RANKED_BRIEF_TOKENS_PER_BLOCK * tokenEstimate.charsPerToken),
       },
     });
+    // Duckwerks: Nest owns the work goal; VCC asks for a read-only copy.
+    const summary = withNestGoal(summaryCore, requestNestGoal(pi, branchEntries));
 
     const branchIds = branchEntries.map((e: any) => e.id);
     const cutIdx = branchIds.indexOf(firstKeptEntryId);
