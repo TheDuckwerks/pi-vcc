@@ -11,8 +11,10 @@
 >   `[Active work goal]` line, re-read each time and never merged forward.
 > - **Receipt-backed commits from a sidecar.** `recognitionProfilePath` names an absolute JSON file of
 >   extra commit commands (`examples/duckwerks-recognition.json`: `quack commit`). A match counts only
->   when its own tool result carries a Git commit header; those commits join `[Commits]`. Version 1,
->   at most 16 rules, 64 KiB, literal argv prefixes only. Without it the summary is exactly upstream's.
+>   when its own tool result carries a Git commit header; those commits join `[Commits]`. Batches the
+>   static parser cannot follow (pipes, redirects, heredoc body files, extra clauses) still count when
+>   no other git command in them can commit and headers do not outnumber the matched commands.
+>   Version 1, at most 16 rules, 64 KiB, literal argv prefixes only. Without it the summary is exactly upstream's.
 >
 > The pre-v0.12 fork (v0.8.1 base) is tagged `duckwerks-v0.8.1-final`. Run the suite as in `AGENTS.md`,
 > with `HOME`, `TMPDIR` and `PI_CODING_AGENT_DIR` pointed at ignored dirs under `node_modules/`.

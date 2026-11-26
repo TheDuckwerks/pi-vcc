@@ -78,9 +78,13 @@ describe("observed Land envelope", () => {
     "git diff && quack commit body.txt",
     "git diff --cached --check --output=out && quack commit body.txt",
     "quack log $BODY && quack commit body.txt",
-    "quack log body.txt && git commit -m 'Other' && quack commit body.txt",
-  ])("unsupported Land variants fail closed %s", command => {
-    expect(extract(command)).toEqual([]);
+  ])("Land variants the static parser cannot follow count on their receipt %s", command => {
+    expect(extract(command)).toHaveLength(1);
+    expect(extract(command, "fatal: failed")).toEqual([]);
+  });
+
+  test("another commit producer in the batch still rejects it", () => {
+    expect(extract("quack log body.txt && git commit -m 'Other' && quack commit body.txt")).toEqual([]);
   });
 });
 
@@ -103,25 +107,42 @@ describe("conservative command matching", () => {
     "quack commit --help",
     "quack commit --dry-run body.txt",
     "quack commit",
+    "if true; then quack commit body.txt; fi",
+    "bash -lc 'quack commit body.txt'",
+    "git commit -m 'other commit'; quack commit body.txt",
+    "quack commit body.txt && git -C /repo merge topic",
+  ])("rejects a mention, an option or another commit producer %s", command => {
+    expect(extract(command)).toEqual([]);
+  });
+
+  // The Git header in the command's own result is the proof; the parser only has
+  // to rule out a header from anything else. These batches pass on their receipt.
+  test.each([
     "quack commit a.txt b.txt",
     "cat <<'EOF'\nquack commit body.txt\nEOF",
-    "python3 - <<'PY'\nquack commit body.txt\nPY",
     "quack commit $BODY_FILE",
     "quack commit $(echo body.txt)",
     'quack commit "$BODY_FILE"',
     "quack commit `echo body.txt`",
     "quack commit body.txt | cat",
     "quack commit body.txt &",
-    "quack commit body.txt > out.txt",
-    "if true; then quack commit body.txt; fi",
-    "bash -lc 'quack commit body.txt'",
-    "git commit -m 'other commit'; quack commit body.txt",
-    "echo '[main abc1234] Fake receipt'; quack commit body.txt",
-    "quack commit 'unclosed",
     "(quack commit body.txt",
     "quack commit body.txt)",
-  ])("fails closed for unsupported/mention shape %s", command => {
-    expect(extract(command)).toEqual([]);
+    "cd /repo && printf 'Subject\\n' > .tmp/c.txt && git add a.ts && quack commit .tmp/c.txt 2>&1 | tail -1 && gh issue close 1",
+    "cat > .tmp/c.txt <<'EOF'\nSubject\n\nBody mentions git log only\nEOF\ngit add a.ts && quack commit .tmp/c.txt 2>&1 | tail -1",
+  ])("accepts on its receipt when the static parser cannot follow the batch %s", command => {
+    expect(extract(command)).toHaveLength(1);
+    expect(extract(command, " 1 file changed, 1 insertion(+)")).toEqual([]);
+  });
+
+  test("more headers than profile commands (an echoed fake beside the real one) rejects the batch", () => {
+    expect(extract("echo '[main abc1234] Fake receipt'; quack commit body.txt", "[main abc1234] Fake receipt\n[main def5678] Real")).toEqual([]);
+  });
+
+  test("quack's header as the last line survives tail -1", () => {
+    expect(extract("quack commit c.txt 2>&1 | tail -1", "[main 84a6368] second subject")).toEqual([
+      expect.objectContaining({ hash: "84a6368", message: "second subject" }),
+    ]);
   });
 
   test("literal dollar in single quotes is a path, not expansion", () => {

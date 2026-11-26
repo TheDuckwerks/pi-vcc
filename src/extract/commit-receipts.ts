@@ -90,6 +90,23 @@ const isScaffolding = (argv: string[], allowQuackLog: boolean): boolean => {
   return args.join(" ") === "diff --check" || args.join(" ") === "diff --cached --check";
 };
 
+/** Rule ids for a fully static batch of matched commands and scaffolding, else undefined. */
+const strictMatches = (
+  command: string,
+  match: (argv: string[]) => string | undefined,
+  allowQuackLog: boolean,
+): string[] | undefined => {
+  const commands = staticCommandList(command);
+  if (!commands) return undefined;
+  const matched: string[] = [];
+  for (const argv of commands) {
+    const rule = match(argv);
+    if (rule) matched.push(rule);
+    else if (!isScaffolding(argv, allowQuackLog)) return undefined;
+  }
+  return matched;
+};
+
 export interface CommitReceipt extends CommitInfo {
   ruleIds: string[];
 }
@@ -99,6 +116,8 @@ export const extractCommitReceipts = (
   blocks: NormalizedBlock[],
   match: (argv: string[]) => string | undefined,
   allowQuackLog = false,
+  /** Rule ids matched in a batch the static parser rejects, or undefined to reject it. */
+  fallback?: (command: string) => string[] | undefined,
 ): CommitReceipt[] => {
   const calls = new Map<string, number | null>();
   const results = new Map<string, number | null>();
@@ -118,14 +137,7 @@ export const extractCommitReceipts = (
     if (resultIndex == null || resultIndex <= blockIndex) return;
     const result = blocks[resultIndex];
     if (result.kind !== "tool_result" || result.name !== call.name) return;
-    const commands = staticCommandList(call.args.command);
-    if (!commands) return;
-    const matched: string[] = [];
-    for (const argv of commands) {
-      const rule = match(argv);
-      if (rule) matched.push(rule);
-      else if (!isScaffolding(argv, allowQuackLog)) return;
-    }
+    const matched = strictMatches(call.args.command, match, allowQuackLog) ?? fallback?.(call.args.command) ?? [];
     if (!matched.length) return;
     // A header is evidence of a commit even if a later clause fails.
     const receipts = [...result.text.matchAll(/^\[[^\]\r\n]+ ([0-9a-f]{7,64})\] ([^\r\n]+)$/gm)];
