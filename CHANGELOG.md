@@ -4,6 +4,10 @@ All notable changes to `@sting8k/pi-vcc` are documented in this file.
 
 ## [Unreleased]
 
+### Fixes
+
+- **A `git commit` written inside a heredoc is no longer listed as a commit** — a script fed to `python3 - <<'EOF'` or a file written with `cat > notes.md <<EOF` that contained `git commit -m "..."` put a commit with no hash in `[Commits]`, though nothing was committed. Heredoc bodies are now skipped, except when they feed a shell (`bash <<EOF`, `ssh host <<EOF`), where the commands do run. A commit's own `-F -` heredoc still supplies its subject, which is no longer taken from a `-m` line further down the body.
+
 ## [0.12.1]
 
 ### Fixes

@@ -177,4 +177,38 @@ describe("extractCommits", () => {
     ] as NormalizedBlock[];
     expect(extractCommits([...hashed, ...other]).map((x) => x.hash)).toEqual(["5416801", "9999999"]);
   });
+
+  describe("git commit written inside a heredoc body", () => {
+    const quiet = (command: string): NormalizedBlock[] => [
+      { kind: "tool_call", name: "bash", args: { command } },
+      { kind: "tool_result", name: "bash", text: "" },
+    ];
+
+    it("skips a mention in a script fed to an interpreter", () => {
+      const cmd = "python3 - <<'EOF'\nfixtures = [\n  \"make && git commit -m 'Example subject'\",\n]\nEOF";
+      expect(extractCommits(quiet(cmd))).toEqual([]);
+    });
+
+    it("skips a mention in a file being written", () => {
+      expect(extractCommits(quiet('cat > notes.md <<EOF\nthen run: git commit -m "Docs"\nEOF'))).toEqual([]);
+    });
+
+    it("keeps a real commit after the heredoc closes", () => {
+      const cmd = "cat > notes.md <<'EOF'\ngit commit -m \"Not this\"\nEOF\ngit add notes.md && git commit -m \"Add notes\"";
+      expect(extractCommits(commitBlocks(cmd))).toEqual([{ hash: "5416801", message: "Add notes" }]);
+    });
+
+    it("keeps a commit in a body that a shell runs", () => {
+      expect(extractCommits(commitBlocks("bash <<'EOF'\ncd repo && git commit -m \"From a script\"\nEOF"))).toEqual([{ hash: "5416801", message: "From a script" }]);
+      expect(extractCommits(commitBlocks("ssh box <<EOF\ngit commit -m \"Remote\"\nEOF"))).toEqual([{ hash: "5416801", message: "Remote" }]);
+    });
+
+    it("still reads a commit message from its own heredoc", () => {
+      expect(extractCommits(commitBlocks("git commit -F - <<'EOF'\nSubject here\n\ngit commit -m \"inside body\"\nEOF"))).toEqual([{ hash: "5416801", message: "Subject here" }]);
+    });
+
+    it("handles escaped newlines the way the other heredoc parsers do", () => {
+      expect(extractCommits(quiet("cat > f.txt <<'EOF'\\ngit commit -m \"No\"\\nEOF"))).toEqual([]);
+    });
+  });
 });

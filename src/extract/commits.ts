@@ -50,19 +50,55 @@ const subjectFromStdinHeredoc = (cmd: string): string | null => {
   return cleanMessage(firstHeredocBodyLine(cmd.slice(m.index! + m[0].length), delim));
 };
 
+// Heredoc bodies are input to a command (a script, a file being written, a commit
+// message), not commands, so a `git commit` written inside one never ran. A body
+// fed to a shell (`bash <<EOF`, `ssh host <<EOF`) does run, so it is kept.
+const SHELL_FEED_RE = /(?:^|[;&|(\n]|\\n)\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b[^;&|\n]*$|(?:^|[;&|(\n]|\\n)\s*ssh\b[^;&|\n]*$/;
+const HEREDOC_OPEN_RE = /<<(-?)\s*(?:'([^']+)'|"([^"]+)"|([A-Za-z_]\w*))/g;
+const LINE_END_RE = /\r?\n|\\n/g;
+const heredocBodies = (cmd: string): Array<[number, number]> => {
+  const bodies: Array<[number, number]> = [];
+  for (const m of cmd.matchAll(HEREDOC_OPEN_RE)) {
+    if (bodies.some(([from, to]) => m.index! >= from && m.index! < to)) continue;
+    const runsAsCommands = SHELL_FEED_RE.test(cmd.slice(0, m.index));
+    const delim = m[2] ?? m[3] ?? m[4] ?? "";
+    LINE_END_RE.lastIndex = m.index! + m[0].length;
+    const first = LINE_END_RE.exec(cmd);
+    if (!first) continue;
+    const from = first.index + first[0].length;
+    let to = cmd.length;
+    for (let at = from; at < cmd.length;) {
+      LINE_END_RE.lastIndex = at;
+      const end = LINE_END_RE.exec(cmd);
+      const line = cmd.slice(at, end ? end.index : cmd.length);
+      if ((m[1] ? line.replace(/^\t+/, "") : line).trim() === delim) { to = at; break; }
+      if (!end) break;
+      at = end.index + end[0].length;
+    }
+    if (!runsAsCommands) bodies.push([from, to]);
+  }
+  return bodies;
+};
+
 // A later `git commit` starts a new commit only at a command boundary, so prose in a message that says "git commit" does not split it.
 const COMMIT_START_RE = /\bgit\s+commit\b/g;
 const commitSegments = (cmd: string): string[] => {
   const starts: number[] = [];
+  const bodies = cmd.includes("<<") ? heredocBodies(cmd) : [];
   for (const m of cmd.matchAll(COMMIT_START_RE)) {
+    if (bodies.some(([from, to]) => m.index! >= from && m.index! < to)) continue;
     if (starts.length === 0 || /(?:^|[;&|(\n])\s*$/.test(cmd.slice(0, m.index))) starts.push(m.index!);
   }
   return starts.map((at, k) => cmd.slice(at, starts[k + 1]));
 };
 
 /** Subject of the one `git commit ...` in `seg`, or "" when it cannot be read. */
+// Anchored: a segment starts at its own `git commit`, so a later line (a heredoc
+// body, say) cannot supply this commit's -m.
+const COMMIT_MSG_AT_START_RE = new RegExp(`^${COMMIT_MSG_RE.source}`);
+
 const subjectOf = (seg: string): string => {
-  const m = seg.match(COMMIT_MSG_RE);
+  const m = seg.match(COMMIT_MSG_AT_START_RE);
   if (!m) return subjectFromStdinHeredoc(seg) ?? "";
   // First -m is `"$(cat <<DELIM ...`: COMMIT_MSG_RE only sees `$(cat <<...`, so read the heredoc body.
   const heredoc = m[1] !== undefined && /^\$\(cat\s+<</.test(m[1])
